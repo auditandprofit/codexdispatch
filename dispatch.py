@@ -4,6 +4,7 @@ import subprocess
 import logging
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import shutil
 
 
 """Dispatch tool for running Codex on multiple input files in parallel."""
@@ -21,6 +22,12 @@ def parse_args() -> argparse.Namespace:
         default=os.getcwd(),
         help="working directory to run Codex in (default: current directory)",
     )
+    parser.add_argument(
+        "--codex-bin",
+        dest="codex_bin",
+        default=None,
+        help="path to codex binary. Defaults to searching PATH or current directory",
+    )
     return parser.parse_args()
 
 
@@ -37,10 +44,33 @@ def main() -> None:
 
     os.makedirs(output_dir, exist_ok=True)
 
-    codex_bin = os.path.join(os.path.dirname(__file__), 'codex-x86_64-unknown-linux-musl')
-    if not os.path.exists(codex_bin):
-        logging.error("Codex binary not found at %s", codex_bin)
-        sys.exit(1)
+    codex_bin = args.codex_bin
+    if codex_bin:
+        codex_bin = os.path.abspath(codex_bin)
+        if not os.path.exists(codex_bin):
+            logging.error("Codex binary not found at %s", codex_bin)
+            sys.exit(1)
+    else:
+        codex_bin = shutil.which("codex")
+        if codex_bin is None:
+            candidates = [
+                f
+                for f in os.listdir(os.getcwd())
+                if os.path.isfile(f) and "codex" in f and os.access(f, os.X_OK)
+            ]
+            if len(candidates) == 1:
+                codex_bin = os.path.abspath(candidates[0])
+            elif len(candidates) > 1:
+                logging.error(
+                    "Multiple codex binaries found in current directory: %s",
+                    ", ".join(candidates),
+                )
+                sys.exit(1)
+            else:
+                logging.error(
+                    "Codex binary not found in PATH or current directory"
+                )
+                sys.exit(1)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
