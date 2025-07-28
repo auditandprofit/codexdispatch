@@ -10,12 +10,37 @@ import shutil
 """Dispatch tool for running Codex on multiple input files in parallel."""
 
 
+def collect_files(dirs: list[str], recursive: bool = True) -> list[str]:
+    files: list[str] = []
+    for root in dirs:
+        if recursive:
+            for dirpath, _, filenames in os.walk(root):
+                for name in filenames:
+                    path = os.path.join(dirpath, name)
+                    if os.path.isfile(path):
+                        files.append(path)
+        else:
+            for name in os.listdir(root):
+                path = os.path.join(root, name)
+                if os.path.isfile(path):
+                    files.append(path)
+    return sorted(files)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("template", help="path to prompt template")
-    parser.add_argument("data_dir", help="directory containing input files")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("data_dir", nargs="?", help="directory containing input files")
+    group.add_argument("--tree-dirs", nargs="+", dest="tree_dirs", help="directories to recursively walk")
     parser.add_argument("output_dir", help="directory for codex outputs")
     parser.add_argument("workers", type=int, help="number of parallel workers")
+    parser.add_argument(
+        "--recursive",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="recursively walk tree directories",
+    )
     parser.add_argument(
         "-C",
         "--work-dir",
@@ -35,7 +60,6 @@ def main() -> None:
     args = parse_args()
 
     template_path = args.template
-    data_dir = args.data_dir
     output_dir = args.output_dir
     workers = args.workers
 
@@ -80,6 +104,7 @@ def main() -> None:
                 data = f.read()
             prompt = template + "\n" + data
             output_path = os.path.join(output_dir, os.path.basename(path) + "-codex")
+            work_dir = os.path.dirname(path) if args.tree_dirs else args.work_dir
             cmd = [
                 codex_bin,
                 "exec",
@@ -88,15 +113,35 @@ def main() -> None:
                 "--dangerously-bypass-approvals-and-sandbox",
                 "--skip-git-repo-check",
                 "-C",
-                args.work_dir,
+                work_dir,
             ]
-            logging.info("Running codex on %s", path)
+            if args.tree_dirs:
+                root = next(
+                    (
+                        d
+                        for d in args.tree_dirs
+                        if os.path.commonpath([os.path.abspath(path), os.path.abspath(d)])
+                        == os.path.abspath(d)
+                    ),
+                    os.path.dirname(path),
+                )
+                logging.info("TreeMode: root=%s   file=%s   work_dir=%s", root, path, work_dir)
+            else:
+                logging.info("Running codex on %s", path)
             subprocess.run(cmd, input=prompt.encode(), check=True)
             logging.info("Wrote %s", output_path)
         except Exception as exc:
             logging.error("Failed processing %s: %s", path, exc)
 
-    files = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if os.path.isfile(os.path.join(data_dir, f))]
+    if args.tree_dirs:
+        files = collect_files(args.tree_dirs, recursive=args.recursive)
+    else:
+        data_dir = args.data_dir
+        files = [
+            os.path.join(data_dir, f)
+            for f in os.listdir(data_dir)
+            if os.path.isfile(os.path.join(data_dir, f))
+        ]
     with ThreadPoolExecutor(max_workers=workers) as executor:
         list(executor.map(run_on_file, files))
 
