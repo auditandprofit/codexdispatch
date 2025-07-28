@@ -19,4 +19,6 @@ python dispatch.py TEMPLATE --tree-dirs DIR [DIR ...] OUTPUT_DIR WORKERS [--recu
 - `--codex-bin` - path to the codex binary. If not provided, the script looks for
   `codex` in `PATH` and then searches the current directory.
 
-In flat mode, each file in `DATA_DIR` is appended to the template and sent to Codex. In tree mode every file discovered under `--tree-dirs` is processed the same way, with its parent directory used as the working directory. Results for a file named `example.txt` will be written to `OUTPUT_DIR/example.txt-codex`.
+In flat mode, each file in `DATA_DIR` is appended to the template and sent to Codex. In tree mode every file discovered under `--tree-dirs` is processed the same way, with its parent directory used as the working directory. Results mirror the source tree: a file `src/example.txt` will produce `OUTPUT_DIR/src/example.txt-codex`. This avoids collisions when different directories contain files with the same name.
+
+**Note**: Because `--tree-dirs` consumes the following arguments, place it after the required `OUTPUT_DIR` and `WORKERS` positionals or separate them with `--` when invoking the script.

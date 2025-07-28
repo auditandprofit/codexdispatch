@@ -72,6 +72,9 @@ def main() -> None:
     output_dir = args.output_dir
     workers = args.workers
 
+    if args.data_dir and not args.recursive:
+        logging.warning("--recursive option is ignored when using --data-dir")
+
     with open(template_path, 'r') as f:
         template = f.read()
 
@@ -112,7 +115,25 @@ def main() -> None:
             with open(path, "r") as f:
                 data = f.read()
             prompt = template + "\n" + data
-            output_path = os.path.join(output_dir, os.path.basename(path) + "-codex")
+
+            if args.tree_dirs:
+                root = next(
+                    (
+                        d
+                        for d in args.tree_dirs
+                        if os.path.commonpath([os.path.abspath(path), os.path.abspath(d)])
+                        == os.path.abspath(d)
+                    ),
+                    os.path.dirname(path),
+                )
+                prefix = os.path.basename(root)
+                rel_path = os.path.join(prefix, os.path.relpath(path, root))
+            else:
+                rel_path = os.path.basename(path)
+
+            output_path = os.path.join(output_dir, rel_path + "-codex")
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
             work_dir = os.path.dirname(path) if args.tree_dirs else args.work_dir
             cmd = [
                 codex_bin,
@@ -125,15 +146,6 @@ def main() -> None:
                 work_dir,
             ]
             if args.tree_dirs:
-                root = next(
-                    (
-                        d
-                        for d in args.tree_dirs
-                        if os.path.commonpath([os.path.abspath(path), os.path.abspath(d)])
-                        == os.path.abspath(d)
-                    ),
-                    os.path.dirname(path),
-                )
                 logging.info("TreeMode: root=%s   file=%s   work_dir=%s", root, path, work_dir)
             else:
                 logging.info("Running codex on %s", path)
