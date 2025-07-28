@@ -31,8 +31,17 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("template", help="path to prompt template")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("data_dir", nargs="?", help="directory containing input files")
-    group.add_argument("--tree-dirs", nargs="+", dest="tree_dirs", help="directories to recursively walk")
+    group.add_argument(
+        "--data-dir",
+        dest="data_dir",
+        help="directory containing input files",
+    )
+    group.add_argument(
+        "--tree-dirs",
+        nargs="+",
+        dest="tree_dirs",
+        help="directories to recursively walk",
+    )
     parser.add_argument("output_dir", help="directory for codex outputs")
     parser.add_argument("workers", type=int, help="number of parallel workers")
     parser.add_argument(
