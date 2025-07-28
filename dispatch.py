@@ -42,8 +42,19 @@ def parse_args() -> argparse.Namespace:
         dest="tree_dirs",
         help="directories to recursively walk",
     )
-    parser.add_argument("output_dir", help="directory for codex outputs")
-    parser.add_argument("workers", type=int, help="number of parallel workers")
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        required=True,
+        help="directory for codex outputs",
+    )
+    parser.add_argument(
+        "-j",
+        "--workers",
+        type=int,
+        required=True,
+        help="number of parallel workers",
+    )
     parser.add_argument(
         "--recursive",
         action=argparse.BooleanOptionalAction,
@@ -75,10 +86,16 @@ def main() -> None:
     if args.data_dir and not args.recursive:
         logging.warning("--recursive option is ignored when using --data-dir")
 
-    with open(template_path, 'r') as f:
+    with open(template_path, "r") as f:
         template = f.read()
 
     os.makedirs(output_dir, exist_ok=True)
+
+    root_prefix: dict[str, str] = {}
+    if args.tree_dirs:
+        for idx, d in enumerate(args.tree_dirs, 1):
+            base = os.path.basename(os.path.normpath(d))
+            root_prefix[os.path.abspath(d)] = f"{idx}_{base}"
 
     codex_bin = args.codex_bin
     if codex_bin:
@@ -103,17 +120,19 @@ def main() -> None:
                 )
                 sys.exit(1)
             else:
-                logging.error(
-                    "Codex binary not found in PATH or current directory"
-                )
+                logging.error("Codex binary not found in PATH or current directory")
                 sys.exit(1)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     def run_on_file(path: str) -> None:
         try:
-            with open(path, "r") as f:
-                data = f.read()
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = f.read()
+            except UnicodeDecodeError:
+                logging.warning("Skipping non-text file %s", path)
+                return
             prompt = template + "\n" + data
 
             if args.tree_dirs:
@@ -121,15 +140,17 @@ def main() -> None:
                     (
                         d
                         for d in args.tree_dirs
-                        if os.path.commonpath([os.path.abspath(path), os.path.abspath(d)])
+                        if os.path.commonpath(
+                            [os.path.abspath(path), os.path.abspath(d)]
+                        )
                         == os.path.abspath(d)
                     ),
                     os.path.dirname(path),
                 )
-                prefix = os.path.basename(root)
+                prefix = root_prefix.get(os.path.abspath(root), os.path.basename(root))
                 rel_path = os.path.join(prefix, os.path.relpath(path, root))
             else:
-                rel_path = os.path.basename(path)
+                rel_path = os.path.relpath(path, args.data_dir)
 
             output_path = os.path.join(output_dir, rel_path + "-codex")
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -146,7 +167,9 @@ def main() -> None:
                 work_dir,
             ]
             if args.tree_dirs:
-                logging.info("TreeMode: root=%s   file=%s   work_dir=%s", root, path, work_dir)
+                logging.info(
+                    "TreeMode: root=%s   file=%s   work_dir=%s", root, path, work_dir
+                )
             else:
                 logging.info("Running codex on %s", path)
             subprocess.run(cmd, input=prompt.encode(), check=True)
@@ -159,13 +182,15 @@ def main() -> None:
     else:
         data_dir = args.data_dir
         files = [
-            os.path.join(data_dir, f)
-            for f in os.listdir(data_dir)
-            if os.path.isfile(os.path.join(data_dir, f))
+            os.path.join(dp, f)
+            for dp, _, filenames in os.walk(data_dir)
+            for f in filenames
+            if os.path.isfile(os.path.join(dp, f))
         ]
+        files = sorted(files)
     with ThreadPoolExecutor(max_workers=workers) as executor:
         list(executor.map(run_on_file, files))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
