@@ -5,12 +5,12 @@ Simple dispatcher for running the bundled Codex binary over multiple files in pa
 ## Usage
 
 ```
-python dispatch.py TEMPLATE DATA_DIR OUTPUT_DIR WORKERS [-C WORK_DIR] [--codex-bin PATH]
+python dispatch.py TEMPLATE --data-dir DIR OUTPUT_DIR WORKERS [-C WORK_DIR] [--codex-bin PATH]
 python dispatch.py TEMPLATE --tree-dirs DIR [DIR ...] OUTPUT_DIR WORKERS [--recursive/--no-recursive] [-C WORK_DIR] [--codex-bin PATH]
 ```
 
 - `TEMPLATE` - path to the prompt template.
-- `DATA_DIR` - directory containing input files (flat mode).
+- `--data-dir` - directory containing input files (flat mode).
 - `--tree-dirs` - one or more directories to recursively walk (tree mode).
 - `OUTPUT_DIR` - directory where results will be written.
 - `WORKERS` - number of parallel workers.
