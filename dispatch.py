@@ -5,6 +5,8 @@ import logging
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import shutil
+import uuid
+import json
 
 
 """Dispatch tool for running the Codex binary over many files in parallel.
@@ -96,6 +98,18 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="path to codex binary. Defaults to searching PATH or current directory",
     )
+    parser.add_argument(
+        "--passes",
+        type=int,
+        default=1,
+        help="number of evaluation passes (tree mode only)",
+    )
+    parser.add_argument(
+        "--map-name",
+        dest="map_name",
+        default=None,
+        help="mapping filename for multi-pass mode",
+    )
     return parser.parse_args()
 
 
@@ -105,6 +119,11 @@ def main() -> None:
     template_path = args.template
     output_dir = args.output_dir
     workers = args.workers
+    passes = max(1, args.passes)
+    if passes > 1 and not args.tree_dirs:
+        logging.error("--passes > 1 is only supported with --tree-dirs")
+        sys.exit(1)
+    map_name = args.map_name or f"mp_map_{uuid.uuid4().hex}.json"
 
     if args.data_dir and not args.recursive:
         logging.warning("--recursive option is ignored when using --data-dir")
@@ -163,7 +182,31 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-    def run_on_file(path: str) -> None:
+    def rel_and_root(path: str) -> tuple[str, str | None]:
+        if args.tree_dirs:
+            root = next(
+                (
+                    d
+                    for d in args.tree_dirs
+                    if os.path.commonpath([os.path.abspath(path), os.path.abspath(d)])
+                    == os.path.abspath(d)
+                ),
+                os.path.dirname(path),
+            )
+            prefix = root_prefix.get(os.path.abspath(root), os.path.basename(root))
+            rel_path = os.path.join(prefix, os.path.relpath(path, root))
+            return rel_path, root
+        elif args.data_dir:
+            return os.path.relpath(path, args.data_dir), None
+        else:
+            return os.path.relpath(path), None
+
+    def build_prompt(data: str, prev_output: str | None) -> str:
+        if prev_output is None:
+            return f"{template}\n{data}"
+        return f"{template}\n{prev_output}\n{data}"
+
+    def run_on_file(pass_idx: int, prev_outputs: dict[str, str], path: str) -> None:
         try:
             try:
                 with open(path, "r", encoding="utf-8") as f:
@@ -172,32 +215,18 @@ def main() -> None:
                 prefix = "FileListMode:" if args.file_list else ""
                 logging.warning("%sSkipping non-text file %s", prefix, path)
                 return
+            prev_output = prev_outputs.get(path)
             if args.file_list:
                 filename_line = os.path.abspath(path)
-                prompt = f"{template}\n{filename_line}\n{data}"
+                file_data = f"{filename_line}\n{data}"
             else:
-                prompt = template + "\n" + data
+                file_data = data
+            prompt = build_prompt(file_data, prev_output)
 
-            if args.tree_dirs:
-                root = next(
-                    (
-                        d
-                        for d in args.tree_dirs
-                        if os.path.commonpath(
-                            [os.path.abspath(path), os.path.abspath(d)]
-                        )
-                        == os.path.abspath(d)
-                    ),
-                    os.path.dirname(path),
-                )
-                prefix = root_prefix.get(os.path.abspath(root), os.path.basename(root))
-                rel_path = os.path.join(prefix, os.path.relpath(path, root))
-            elif args.data_dir:
-                rel_path = os.path.relpath(path, args.data_dir)
-            else:
-                rel_path = os.path.relpath(path)
+            rel_path, root = rel_and_root(path)
 
-            output_path = os.path.join(output_dir, rel_path + "-codex")
+            file_name = f"{pass_idx}_{rel_path}-codex" if passes > 1 else f"{rel_path}-codex"
+            output_path = os.path.join(output_dir, file_name)
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
             work_dir = args.work_dir if args.file_list else (
@@ -217,7 +246,11 @@ def main() -> None:
                 logging.info("FileListMode: %s -> %s", path, output_path)
             elif args.tree_dirs:
                 logging.info(
-                    "TreeMode: root=%s   file=%s   work_dir=%s", root, path, work_dir
+                    "TreeMode: pass=%s root=%s   file=%s   work_dir=%s",
+                    pass_idx,
+                    root,
+                    path,
+                    work_dir,
                 )
             else:
                 logging.info("Running codex on %s", path)
@@ -263,8 +296,39 @@ def main() -> None:
         missing = [p for p in file_list_entries if not os.path.exists(p)]
         for m in missing:
             logging.warning("FileListMode: missing path %s", m)
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        list(executor.map(run_on_file, files))
+
+    for pass_idx in range(1, passes + 1):
+        prev_cache: dict[str, str] = {}
+        if pass_idx > 1:
+            for p in files:
+                rel_path, _ = rel_and_root(p)
+                prev_file = (
+                    f"{pass_idx - 1}_{rel_path}-codex"
+                    if passes > 1
+                    else f"{rel_path}-codex"
+                )
+                prev_path = os.path.join(output_dir, prev_file)
+                if os.path.exists(prev_path):
+                    with open(prev_path, "r", encoding="utf-8") as pf:
+                        prev_cache[p] = pf.read()
+                else:
+                    logging.error("Missing previous output %s", prev_path)
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            list(executor.map(lambda p: run_on_file(pass_idx, prev_cache, p), files))
+
+        if pass_idx < passes:
+            mapping: list[dict[str, str]] = []
+            for p in files:
+                rel_path, _ = rel_and_root(p)
+                file_name = (
+                    f"{pass_idx}_{rel_path}-codex" if passes > 1 else f"{rel_path}-codex"
+                )
+                out_path = os.path.join(output_dir, file_name)
+                if os.path.exists(out_path):
+                    mapping.append({"input": os.path.abspath(p), "output": os.path.abspath(out_path)})
+            with open(os.path.join(output_dir, map_name), "w", encoding="utf-8") as mf:
+                json.dump(mapping, mf, indent=2)
 
 
 if __name__ == "__main__":
