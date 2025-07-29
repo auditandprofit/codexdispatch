@@ -94,8 +94,8 @@ class DispatchIntegration(unittest.TestCase):
             )
         os.chmod(self.codex, 0o755)
 
-    def run_dispatch(self, args):
-        subprocess.check_call([sys.executable, "dispatch.py"] + args)
+    def run_dispatch(self, args, env=None):
+        subprocess.check_call([sys.executable, "dispatch.py"] + args, env=env)
 
     def test_prompt_and_workdir_file_list(self):
         template = os.path.join(self.tmpdir.name, "tmpl.txt")

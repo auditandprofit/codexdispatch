@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import shutil
 import uuid
 import json
+from collections import defaultdict
 
 
 """Dispatch tool for running the Codex binary over many files in parallel.
@@ -41,9 +42,52 @@ def collect_files(dirs: list[str], recursive: bool = True) -> list[str]:
     return sorted(files)
 
 
+def _invoke_codex(cmd: list[str], prompt: str, timeout: int | None, path: str) -> None:
+    max_tries = 2
+    for attempt in range(1, max_tries + 1):
+        try:
+            subprocess.run(
+                cmd,
+                input=prompt.encode(),
+                check=True,
+                timeout=timeout or None,
+            )
+            break
+        except subprocess.TimeoutExpired:
+            if attempt == max_tries:
+                raise
+            logging.warning("Retrying (%s/%s) %s", attempt, max_tries, path)
+
+
+def parse_codex_json(text: str) -> dict:
+    try:
+        return json.loads(text.splitlines()[-1])
+    except (json.JSONDecodeError, IndexError):
+        logging.error("Non-JSON response")
+        return {"findings": [], "leads": []}
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("template", help="path to prompt template")
+    parser.add_argument(
+        "--security-audit",
+        action="store_true",
+        default=False,
+        help="activate security auditor mode",
+    )
+    parser.add_argument(
+        "--depth",
+        type=int,
+        default=1,
+        help="max BFS layers for security audit",
+    )
+    parser.add_argument(
+        "--template-sec",
+        dest="template_sec",
+        default=None,
+        help="path to security audit template",
+    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--data-dir",
@@ -110,11 +154,233 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="mapping filename for multi-pass mode",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.security_audit:
+        if not args.template_sec:
+            parser.error("--template-sec is required with --security-audit")
+        if args.depth < 1:
+            parser.error("--depth must be >= 1")
+        if args.passes != 1:
+            parser.error("--passes is not supported with --security-audit")
+    return args
+
+
+def run_security_audit(args: argparse.Namespace) -> None:
+    with open(args.template_sec, "r", encoding="utf-8") as f:
+        template = f.read()
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    codex_bin = args.codex_bin
+    if codex_bin:
+        codex_bin = os.path.abspath(codex_bin)
+        if not os.path.exists(codex_bin):
+            logging.error("Codex binary not found at %s", codex_bin)
+            sys.exit(1)
+    else:
+        codex_bin = shutil.which("codex")
+        if codex_bin is None:
+            candidates = [
+                f
+                for f in os.listdir(os.getcwd())
+                if os.path.isfile(f) and "codex" in f and os.access(f, os.X_OK)
+            ]
+            if len(candidates) == 1:
+                codex_bin = os.path.abspath(candidates[0])
+            elif len(candidates) > 1:
+                logging.error(
+                    "Multiple codex binaries found in current directory: %s",
+                    ", ".join(candidates),
+                )
+                sys.exit(1)
+            else:
+                logging.error("Codex binary not found in PATH or current directory")
+                sys.exit(1)
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    root_prefix: dict[str, str] = {}
+    if args.tree_dirs:
+        for idx, d in enumerate(args.tree_dirs, 1):
+            base = os.path.basename(os.path.normpath(d))
+            root_prefix[os.path.abspath(d)] = f"{idx}_{base}"
+
+    file_list_entries: list[str] = []
+    if args.file_list:
+        if not os.path.isdir(args.work_dir):
+            logging.error("--work-dir %s does not exist", args.work_dir)
+            sys.exit(1)
+        with open(args.file_list, "r", encoding="utf-8") as f:
+            file_list_entries = [
+                p.strip()
+                for p in f
+                if p.strip() and not p.strip().startswith("#")
+            ]
+        file_list_entries = sorted(dict.fromkeys(file_list_entries))
+
+    if args.tree_dirs:
+        files = collect_files(args.tree_dirs, recursive=args.recursive)
+        root_dirs = [os.path.abspath(d) for d in args.tree_dirs]
+    elif args.data_dir:
+        data_dir = args.data_dir
+        files = [
+            os.path.join(dp, f)
+            for dp, _, filenames in os.walk(data_dir)
+            for f in filenames
+            if os.path.isfile(os.path.join(dp, f))
+        ]
+        files = sorted(files)
+        root_dirs = [os.path.abspath(data_dir)]
+    else:
+        files = [p for p in file_list_entries if os.path.exists(p)]
+        missing = [p for p in file_list_entries if not os.path.exists(p)]
+        for m in missing:
+            logging.warning("FileListMode: missing path %s", m)
+        root_dirs = list({os.path.dirname(os.path.abspath(p)) for p in files})
+
+    def rel_and_root(path: str) -> tuple[str, str | None]:
+        if args.tree_dirs:
+            root = next(
+                (
+                    d
+                    for d in args.tree_dirs
+                    if os.path.commonpath([os.path.abspath(path), os.path.abspath(d)])
+                    == os.path.abspath(d)
+                ),
+                os.path.dirname(path),
+            )
+            prefix = root_prefix.get(os.path.abspath(root), os.path.basename(root))
+            rel_path = os.path.join(prefix, os.path.relpath(path, root))
+            return rel_path, root
+        elif args.data_dir:
+            return os.path.relpath(path, args.data_dir), None
+        else:
+            return os.path.relpath(path), None
+
+    def build_prompt(data: str, prev_blobs: list[str]) -> str:
+        parts = [template]
+        parts.extend(prev_blobs)
+        parts.append(data)
+        return "\n".join(parts)
+
+    summary: dict[str, dict] = {}
+    prev_map: defaultdict[str, list[str]] = defaultdict(list)
+    seen: set[str] = set()
+
+    queue = sorted(dict.fromkeys(os.path.abspath(p) for p in files))
+    depth_max = args.depth
+
+    for depth in range(depth_max):
+        if not queue:
+            break
+        next_q: list[str] = []
+        depth_dir = os.path.join(args.output_dir, "security", f"depth_{depth}")
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            futures = {}
+
+            def worker(p: str) -> tuple[str, list[str]]:
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        data = f.read()
+                except UnicodeDecodeError:
+                    logging.warning("Skipping non-text file %s", p)
+                    return p, []
+
+                if args.file_list:
+                    file_data = f"{os.path.abspath(p)}\n{data}"
+                else:
+                    file_data = data
+
+                prompt = build_prompt(file_data, prev_map[p])
+
+                rel_path, root = rel_and_root(p)
+                out_base = os.path.join(depth_dir, f"{rel_path}-audit")
+                os.makedirs(os.path.dirname(out_base), exist_ok=True)
+
+                work_dir = args.work_dir if args.file_list else (
+                    os.path.dirname(p) if args.tree_dirs else args.work_dir
+                )
+
+                cmd = [
+                    codex_bin,
+                    "exec",
+                    "--output-last-message",
+                    out_base,
+                    "--dangerously-bypass-approvals-and-sandbox",
+                    "--skip-git-repo-check",
+                    "-C",
+                    work_dir,
+                ]
+
+                try:
+                    _invoke_codex(cmd, prompt, args.timeout, p)
+                except subprocess.TimeoutExpired as te:
+                    logging.error("TIMEOUT after %ss on %s", te.timeout, p)
+                except subprocess.CalledProcessError as cpe:
+                    stderr = (cpe.stderr or b"").decode(errors="ignore")
+                    logging.error("Codex exit %s on %s\n%s", cpe.returncode, p, stderr)
+                except Exception as exc:
+                    logging.error("Failed processing %s: %s", p, exc)
+
+                try:
+                    with open(out_base, "r", encoding="utf-8") as of:
+                        raw = of.read()
+                except OSError:
+                    raw = ""
+
+                parsed = parse_codex_json(raw)
+                with open(out_base + ".json", "w", encoding="utf-8") as jf:
+                    json.dump(parsed, jf, indent=2)
+                with open(out_base + ".txt", "w", encoding="utf-8") as tf:
+                    for item in parsed.get("findings", []):
+                        tf.write(json.dumps(item) + "\n")
+
+                if raw:
+                    prev_map[p].append(raw.splitlines()[-1])
+
+                summary[p] = {"depth": depth, "findings": parsed.get("findings", [])}
+
+                leads: list[str | None] = []
+                for lead in parsed.get("leads", []):
+                    lp = lead.get("path")
+                    if lp:
+                        abs_lp = os.path.abspath(lp)
+                        if os.path.exists(abs_lp) and any(
+                            os.path.commonpath([abs_lp, rd]) == rd for rd in root_dirs
+                        ):
+                            leads.append(abs_lp)
+                    else:
+                        leads.append(None)
+                return p, leads
+
+            for p in queue:
+                futures[executor.submit(worker, p)] = p
+
+            results = [fut.result() for fut in futures]
+
+        for p, leads in results:
+            if depth < depth_max - 1:
+                for ld in leads:
+                    if ld is None:
+                        if p not in seen and p not in next_q:
+                            next_q.append(p)
+                    else:
+                        if ld not in seen and ld not in next_q:
+                            next_q.append(ld)
+
+        seen.update(queue)
+        queue = [q for q in next_q if q not in seen]
+
+    with open(os.path.join(args.output_dir, "security_summary.json"), "w", encoding="utf-8") as sf:
+        json.dump(summary, sf, indent=2)
 
 
 def main() -> None:
     args = parse_args()
+
+    if args.security_audit:
+        run_security_audit(args)
+        return
 
     template_path = args.template
     output_dir = args.output_dir
@@ -255,20 +521,7 @@ def main() -> None:
             else:
                 logging.info("Running codex on %s", path)
 
-            max_tries = 2
-            for attempt in range(1, max_tries + 1):
-                try:
-                    subprocess.run(
-                        cmd,
-                        input=prompt.encode(),
-                        check=True,
-                        timeout=args.timeout or None,
-                    )
-                    break
-                except subprocess.TimeoutExpired as te:
-                    if attempt == max_tries:
-                        raise
-                    logging.warning("Retrying (%s/%s) %s", attempt, max_tries, path)
+            _invoke_codex(cmd, prompt, args.timeout, path)
 
             prefix = "FileListMode:" if args.file_list else ""
             logging.info("%sWrote %s", prefix, output_path)
