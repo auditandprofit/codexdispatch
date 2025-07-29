@@ -7,6 +7,8 @@ import random
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
+from heapq import heappush, heappop
+from pathlib import Path
 import re
 
 from .utils import collect_files, parse_codex_json, _invoke_codex
@@ -118,6 +120,44 @@ def run_security_audit(args) -> None:
         all_files = sorted(dict.fromkeys(all_files))
         random.seed(0)
 
+    RISK_EXT = {".pem", ".key", ".env", ".crt", ".p12", ".jfrog", ".kube"}
+    if getattr(args, "lead_score_ext", None):
+        for ext in args.lead_score_ext.split(","):
+            ext = ext.strip()
+            if not ext:
+                continue
+            if not ext.startswith("."):
+                ext = "." + ext
+            RISK_EXT.add(ext)
+
+    sensitive_pattern = r"(?i)(password|secret|credential|token|private|aws|gcp|azure)"
+    if getattr(args, "lead_score_regex", None):
+        sensitive_pattern = f"{sensitive_pattern}|({args.lead_score_regex})"
+    SENSITIVE_RE = re.compile(sensitive_pattern)
+
+    extra_rules: list[tuple[re.Pattern, int]] = []
+    if getattr(args, "lead_score_json", None):
+        try:
+            with open(args.lead_score_json, "r", encoding="utf-8") as jf:
+                data = json.load(jf)
+            for pat, weight in data.items():
+                try:
+                    extra_rules.append((re.compile(pat, re.I), int(weight)))
+                except re.error as rex:
+                    logging.error("Invalid regex %s in %s: %s", pat, args.lead_score_json, rex)
+        except OSError as exc:
+            logging.error("Failed reading %s: %s", args.lead_score_json, exc)
+
+    def score(path: str) -> int:
+        name = os.path.basename(path)
+        priority = -10 if Path(path).suffix in RISK_EXT else 0
+        if SENSITIVE_RE.search(name):
+            priority -= 8
+        for rgx, weight in extra_rules:
+            if rgx.search(name):
+                priority += weight
+        return priority
+
     def rel_and_root(path: str) -> tuple[str, str | None]:
         if args.tree_dirs:
             root = next(
@@ -165,13 +205,30 @@ def run_security_audit(args) -> None:
     prev_map: defaultdict[str, list[str]] = defaultdict(list)
     seen: set[str] = set()
 
-    queue: list[tuple[str, str]] = [("path", os.path.abspath(p)) for p in files]
+    fifo = 0
+    queue: list[tuple[tuple[int, int, int, int], tuple[str, str]]] = []
+    for p in files:
+        heappush(
+            queue,
+            (
+                (score(p), p.count(os.sep), len(os.path.basename(p)), fifo),
+                ("path", os.path.abspath(p)),
+            ),
+        )
+        fifo += 1
+
     depth_max = args.depth
 
     for depth in range(depth_max):
         if not queue:
             break
-        next_q: list[tuple[str, str]] = []
+        current_items: list[tuple[str, str]] = []
+        while queue:
+            _, item = heappop(queue)
+            current_items.append(item)
+
+        next_q: list[tuple[tuple[int, int, int, int], tuple[str, str]]] = []
+        queued_tokens: set[str] = set()
         depth_dir = os.path.join(args.output_dir, "security", f"depth_{depth}")
         with ThreadPoolExecutor(max_workers=args.workers) as executor:
             futures = {}
@@ -267,7 +324,7 @@ def run_security_audit(args) -> None:
                         leads.append(("note", fl))
                 return key, leads
 
-            for item in queue:
+            for item in current_items:
                 futures[executor.submit(worker, item)] = item
 
             results = [fut.result() for fut in futures]
@@ -276,11 +333,25 @@ def run_security_audit(args) -> None:
             if depth < depth_max - 1:
                 for ld in leads:
                     token = ld[1]
-                    if token not in seen and ld not in next_q:
-                        next_q.append(ld)
+                    if token not in seen and token not in queued_tokens:
+                        prio = score(token) if ld[0] == "path" else 0
+                        heappush(
+                            next_q,
+                            (
+                                (prio, token.count(os.sep), len(os.path.basename(token)), fifo),
+                                ld,
+                            ),
+                        )
+                        queued_tokens.add(token)
+                        fifo += 1
 
-        seen.update([item[1] for item in queue])
-        queue = [q for q in next_q if q[1] not in seen]
+        seen.update([item[1] for item in current_items])
+        filtered: list[tuple[tuple[int, int, int, int], tuple[str, str]]] = []
+        while next_q:
+            pr, it = heappop(next_q)
+            if it[1] not in seen:
+                heappush(filtered, (pr, it))
+        queue = filtered
 
     with open(os.path.join(args.output_dir, "security_summary.json"), "w", encoding="utf-8") as sf:
         json.dump(summary, sf, indent=2)
