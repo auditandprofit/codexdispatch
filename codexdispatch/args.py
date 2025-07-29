@@ -38,6 +38,24 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help="generate fake audit responses instead of invoking Codex",
     )
+    parser.add_argument(
+        "--lead-score-ext",
+        dest="lead_score_ext",
+        default="",
+        help="comma-separated extensions that increase priority",
+    )
+    parser.add_argument(
+        "--lead-score-regex",
+        dest="lead_score_regex",
+        default=None,
+        help="additional regex to prioritize file names",
+    )
+    parser.add_argument(
+        "--lead-score-json",
+        dest="lead_score_json",
+        default=None,
+        help="path to JSON with custom scoring rules",
+    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--data-dir",
