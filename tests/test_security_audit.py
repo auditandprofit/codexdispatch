@@ -51,9 +51,6 @@ with open(out, 'w') as fh:
         subprocess.check_call([sys.executable, "dispatch.py"] + self.args, env=env)
 
     def test_bfs_dedup(self):
-        tmpl = os.path.join(self.tmpdir.name, "sec.txt")
-        with open(tmpl, "w", encoding="utf-8") as f:
-            f.write("SEC")
         tree = os.path.join(self.tmpdir.name, "tree")
         os.mkdir(tree)
         a = os.path.join(tree, "a.txt")
@@ -70,7 +67,7 @@ with open(out, 'w') as fh:
             "-j", "1",
             "--codex-bin", self.codex,
             "--security-audit",
-            "--template-sec", tmpl,
+            "--audit-focus", "TEST FOCUS",
             "--depth", "2",
         ]
         self.run_audit({"B_PATH": b})

@@ -32,4 +32,4 @@ With `--output-dir` and `--workers` provided as options, arguments can be specif
 
 ## Security audit mode
 
-Running with `--security-audit` processes files in a BFS search and expects a separate prompt describing the audit workflow. This repository ships with `prompts/security_audit_generic.txt`, a generic template that reports security findings and suggests follow-up files via absolute paths. Fork or modify this file to focus on particular bug classes (e.g. OWASP-only, memory-safety-only) or to tweak the output schema.
+Running with `--security-audit` processes files in a BFS search. The generic template at `prompts/security_audit_generic.txt` is always used as the system prompt. Provide a goal for the audit using the mandatory `--audit-focus` option. The focus text is appended after the template for each evaluation.
