@@ -5,8 +5,7 @@ import tempfile
 import json
 import unittest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-import dispatch  # noqa: E402
+import codexdispatch as dispatch
 
 
 class TestParseCodexJson(unittest.TestCase):
