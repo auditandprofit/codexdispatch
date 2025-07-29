@@ -68,6 +68,12 @@ def parse_args() -> argparse.Namespace:
         help="working directory to run Codex in (default: current directory)",
     )
     parser.add_argument(
+        "--timeout",
+        type=int,
+        default=int(os.getenv("CODEX_DISPATCH_TIMEOUT", 900)),
+        help="per-file timeout in seconds (0 = none, default 900)",
+    )
+    parser.add_argument(
         "--codex-bin",
         dest="codex_bin",
         default=None,
@@ -172,8 +178,28 @@ def main() -> None:
                 )
             else:
                 logging.info("Running codex on %s", path)
-            subprocess.run(cmd, input=prompt.encode(), check=True)
+
+            max_tries = 2
+            for attempt in range(1, max_tries + 1):
+                try:
+                    subprocess.run(
+                        cmd,
+                        input=prompt.encode(),
+                        check=True,
+                        timeout=args.timeout or None,
+                    )
+                    break
+                except subprocess.TimeoutExpired as te:
+                    if attempt == max_tries:
+                        raise
+                    logging.warning("Retrying (%s/%s) %s", attempt, max_tries, path)
+
             logging.info("Wrote %s", output_path)
+        except subprocess.TimeoutExpired as te:
+            logging.error("TIMEOUT after %ss on %s", te.timeout, path)
+        except subprocess.CalledProcessError as cpe:
+            stderr = (cpe.stderr or b"").decode(errors="ignore")
+            logging.error("Codex exit %s on %s\n%s", cpe.returncode, path, stderr)
         except Exception as exc:
             logging.error("Failed processing %s: %s", path, exc)
 
