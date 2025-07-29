@@ -17,7 +17,8 @@ Supports three modes:
 ```
 
 When using ``--file-list`` the working directory supplied with ``-C`` is used
-for all Codex executions.
+for all Codex executions. Each prompt includes the full resolved path on a
+separate line before the file contents.
 """
 
 
@@ -172,7 +173,7 @@ def main() -> None:
                 logging.warning("%sSkipping non-text file %s", prefix, path)
                 return
             if args.file_list:
-                filename_line = os.path.basename(path)
+                filename_line = os.path.abspath(path)
                 prompt = f"{template}\n{filename_line}\n{data}"
             else:
                 prompt = template + "\n" + data
