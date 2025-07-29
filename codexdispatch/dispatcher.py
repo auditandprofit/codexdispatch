@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List
 
 from .args import parse_args
-from .utils import collect_files, _invoke_codex, find_codex_bin
+from .utils import collect_files, _invoke_codex, find_codex_bin, load_files
 from .security_audit import run_security_audit
 
 
@@ -149,14 +149,7 @@ def main() -> None:
     if args.tree_dirs:
         files = collect_files(args.tree_dirs, recursive=args.recursive)
     elif args.data_dir:
-        data_dir = args.data_dir
-        files = [
-            os.path.join(dp, f)
-            for dp, _, filenames in os.walk(data_dir)
-            for f in filenames
-            if os.path.isfile(os.path.join(dp, f))
-        ]
-        files = sorted(files)
+        files = load_files(args.data_dir)
     else:
         files = [p for p in file_list_entries if os.path.exists(p)]
         missing = [p for p in file_list_entries if not os.path.exists(p)]

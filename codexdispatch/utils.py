@@ -6,6 +6,22 @@ import json
 import shutil
 
 
+def load_files(data_dir: str) -> list[str]:
+    """Return a sorted list of file paths under *data_dir*.
+
+    The directory is walked recursively and only regular files are returned.
+    """
+
+    return sorted(
+        [
+            os.path.join(dp, f)
+            for dp, _, filenames in os.walk(data_dir)
+            for f in filenames
+            if os.path.isfile(os.path.join(dp, f))
+        ]
+    )
+
+
 def collect_files(dirs: list[str], recursive: bool = True) -> list[str]:
     files: list[str] = []
     for root in dirs:
