@@ -10,14 +10,14 @@ import dispatch
 
 class TestParseCodexJson(unittest.TestCase):
     def test_parse_good(self):
-        blob = "header\n" + json.dumps({"findings": [], "leads": []})
+        blob = "header\n" + json.dumps({"notes": [], "followup": []})
         res = dispatch.parse_codex_json(blob)
-        self.assertIn("findings", res)
-        self.assertIn("leads", res)
+        self.assertIn("notes", res)
+        self.assertIn("followup", res)
 
     def test_parse_bad(self):
         res = dispatch.parse_codex_json("not-json")
-        self.assertEqual(res, {"findings": [], "leads": []})
+        self.assertEqual(res, {"notes": [], "followup": []})
 
 class TestAuditBfs(unittest.TestCase):
     def setUp(self):
@@ -33,11 +33,11 @@ data = sys.stdin.read()
 bpath = os.environ['B_PATH']
 res = {}
 if 'a.txt' in out:
-    res = {'findings': [], 'leads': [{'desc':'b','path': bpath}]}
+    res = {'notes': [], 'followup': [bpath]}
 elif 'b.txt' in out:
-    res = {'findings': [], 'leads': [{'desc':'h','path': None}]}
+    res = {'notes': [], 'followup': ['LOOK']}
 else:
-    res = {'findings': [], 'leads': []}
+    res = {'notes': [], 'followup': []}
 with open(out, 'w') as fh:
     fh.write('x\\n' + json.dumps(res))
 """
@@ -76,10 +76,10 @@ with open(out, 'w') as fh:
         self.assertTrue(os.path.exists(d0_a))
         self.assertTrue(os.path.exists(d0_b))
         d1 = os.path.join(outdir, "security", "depth_1")
-        self.assertFalse(os.path.exists(d1) and os.listdir(d1))
+        self.assertTrue(os.path.exists(os.path.join(d1, "LOOK-audit.json")))
         with open(os.path.join(outdir, "security_summary.json"), "r", encoding="utf-8") as f:
             summary = json.load(f)
-        self.assertEqual(set(summary.keys()), {os.path.abspath(a), os.path.abspath(b)})
+        self.assertEqual(set(summary.keys()), {os.path.abspath(a), os.path.abspath(b), "LOOK"})
         self.assertEqual(summary[os.path.abspath(b)]["depth"], 0)
 
     def test_audit_root_resolves_relative(self):
