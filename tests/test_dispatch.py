@@ -106,9 +106,49 @@ class DispatchIntegration(unittest.TestCase):
 
         out_file = os.path.join(outdir, os.path.relpath(file1) + "-codex")
         with open(out_file, "r", encoding="utf-8") as f:
-            self.assertEqual(f.read(), "TEMPLATE\ninput.txt\ncontent")
+            self.assertEqual(
+                f.read(), f"TEMPLATE\n{os.path.abspath(file1)}\ncontent"
+            )
         with open(out_file + ".workdir", "r", encoding="utf-8") as f:
             self.assertEqual(f.read(), self.workdir)
+
+    def test_file_list_resolves_path(self):
+        template = os.path.join(self.tmpdir.name, "tmpl.txt")
+        with open(template, "w", encoding="utf-8") as f:
+            f.write("TEMPLATE")
+        dir_path = os.path.join(self.tmpdir.name, "dir")
+        weird_dir = os.path.join(self.tmpdir.name, "weird")
+        os.mkdir(dir_path)
+        os.mkdir(weird_dir)
+        file1 = os.path.join(dir_path, "input.txt")
+        with open(file1, "w", encoding="utf-8") as f:
+            f.write("content")
+        weird_path = os.path.join(weird_dir, "..", "dir", "input.txt")
+        lst = os.path.join(self.tmpdir.name, "list2.txt")
+        with open(lst, "w", encoding="utf-8") as f:
+            f.write(weird_path + "\n")
+        outdir = os.path.join(self.tmpdir.name, "out2")
+        os.mkdir(outdir)
+
+        self.run_dispatch([
+            template,
+            "--file-list",
+            lst,
+            "-o",
+            outdir,
+            "-j",
+            "1",
+            "-C",
+            self.workdir,
+            "--codex-bin",
+            self.codex,
+        ])
+
+        out_file = os.path.join(outdir, os.path.relpath(weird_path) + "-codex")
+        with open(out_file, "r", encoding="utf-8") as f:
+            self.assertEqual(
+                f.read(), f"TEMPLATE\n{os.path.abspath(weird_path)}\ncontent"
+            )
 
     def test_output_collision_file_list(self):
         template = os.path.join(self.tmpdir.name, "tmpl.txt")
