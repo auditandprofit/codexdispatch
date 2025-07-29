@@ -83,10 +83,10 @@ def parse_args() -> argparse.Namespace:
         help="max BFS layers for security audit",
     )
     parser.add_argument(
-        "--template-sec",
-        dest="template_sec",
+        "--audit-focus",
+        dest="audit_focus",
         default=None,
-        help="path to security audit template",
+        help="specific focus for the security audit",
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
@@ -156,8 +156,8 @@ def parse_args() -> argparse.Namespace:
     )
     args = parser.parse_args()
     if args.security_audit:
-        if not args.template_sec:
-            parser.error("--template-sec is required with --security-audit")
+        if not args.audit_focus:
+            parser.error("--audit-focus is required with --security-audit")
         if args.depth < 1:
             parser.error("--depth must be >= 1")
         if args.passes != 1:
@@ -165,9 +165,15 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+AUDIT_TEMPLATE_PATH = os.path.join(
+    os.path.dirname(__file__), "prompts", "security_audit_generic.txt"
+)
+
+
 def run_security_audit(args: argparse.Namespace) -> None:
-    with open(args.template_sec, "r", encoding="utf-8") as f:
-        template = f.read()
+    with open(AUDIT_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        base_template = f.read()
+    template_prefix = f"{base_template}\n{args.audit_focus}"
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -258,7 +264,7 @@ def run_security_audit(args: argparse.Namespace) -> None:
             return os.path.relpath(path), None
 
     def build_prompt(data: str, prev_blobs: list[str]) -> str:
-        parts = [template]
+        parts = [template_prefix]
         parts.extend(prev_blobs)
         parts.append(data)
         return "\n".join(parts)
