@@ -1,10 +1,8 @@
 import os
-import sys
 import subprocess
 import tempfile
 import unittest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from codexdispatch.utils import _invoke_codex
 
 
