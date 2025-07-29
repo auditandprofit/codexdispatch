@@ -7,7 +7,18 @@ from concurrent.futures import ThreadPoolExecutor
 import shutil
 
 
-"""Dispatch tool for running Codex on multiple input files in parallel."""
+"""Dispatch tool for running the Codex binary over many files in parallel.
+
+Supports three modes:
+```
+--data-dir   : process every file in a directory
+--tree-dirs  : recursively walk one or more directories
+--file-list  : read explicit file paths from a text file
+```
+
+When using ``--file-list`` the working directory supplied with ``-C`` is used
+for all Codex executions.
+"""
 
 
 def collect_files(dirs: list[str], recursive: bool = True) -> list[str]:
@@ -41,6 +52,11 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         dest="tree_dirs",
         help="directories to recursively walk",
+    )
+    group.add_argument(
+        "--file-list",
+        dest="file_list",
+        help="text file containing absolute/relative paths, one per line",
     )
     parser.add_argument(
         "-o",
@@ -91,6 +107,8 @@ def main() -> None:
 
     if args.data_dir and not args.recursive:
         logging.warning("--recursive option is ignored when using --data-dir")
+    if args.file_list and not args.recursive:
+        logging.warning("--recursive option is ignored when using --file-list")
 
     with open(template_path, "r") as f:
         template = f.read()
@@ -102,6 +120,19 @@ def main() -> None:
         for idx, d in enumerate(args.tree_dirs, 1):
             base = os.path.basename(os.path.normpath(d))
             root_prefix[os.path.abspath(d)] = f"{idx}_{base}"
+
+    file_list_entries: list[str] = []
+    if args.file_list:
+        if not os.path.isdir(args.work_dir):
+            logging.error("--work-dir %s does not exist", args.work_dir)
+            sys.exit(1)
+        with open(args.file_list, "r", encoding="utf-8") as f:
+            file_list_entries = [
+                p.strip()
+                for p in f
+                if p.strip() and not p.strip().startswith("#")
+            ]
+        file_list_entries = sorted(dict.fromkeys(file_list_entries))
 
     codex_bin = args.codex_bin
     if codex_bin:
@@ -137,9 +168,14 @@ def main() -> None:
                 with open(path, "r", encoding="utf-8") as f:
                     data = f.read()
             except UnicodeDecodeError:
-                logging.warning("Skipping non-text file %s", path)
+                prefix = "FileListMode:" if args.file_list else ""
+                logging.warning("%sSkipping non-text file %s", prefix, path)
                 return
-            prompt = template + "\n" + data
+            if args.file_list:
+                filename_line = os.path.basename(path)
+                prompt = f"{template}\n{filename_line}\n{data}"
+            else:
+                prompt = template + "\n" + data
 
             if args.tree_dirs:
                 root = next(
@@ -155,13 +191,17 @@ def main() -> None:
                 )
                 prefix = root_prefix.get(os.path.abspath(root), os.path.basename(root))
                 rel_path = os.path.join(prefix, os.path.relpath(path, root))
-            else:
+            elif args.data_dir:
                 rel_path = os.path.relpath(path, args.data_dir)
+            else:
+                rel_path = os.path.relpath(path)
 
             output_path = os.path.join(output_dir, rel_path + "-codex")
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-            work_dir = os.path.dirname(path) if args.tree_dirs else args.work_dir
+            work_dir = args.work_dir if args.file_list else (
+                os.path.dirname(path) if args.tree_dirs else args.work_dir
+            )
             cmd = [
                 codex_bin,
                 "exec",
@@ -172,7 +212,9 @@ def main() -> None:
                 "-C",
                 work_dir,
             ]
-            if args.tree_dirs:
+            if args.file_list:
+                logging.info("FileListMode: %s -> %s", path, output_path)
+            elif args.tree_dirs:
                 logging.info(
                     "TreeMode: root=%s   file=%s   work_dir=%s", root, path, work_dir
                 )
@@ -194,7 +236,8 @@ def main() -> None:
                         raise
                     logging.warning("Retrying (%s/%s) %s", attempt, max_tries, path)
 
-            logging.info("Wrote %s", output_path)
+            prefix = "FileListMode:" if args.file_list else ""
+            logging.info("%sWrote %s", prefix, output_path)
         except subprocess.TimeoutExpired as te:
             logging.error("TIMEOUT after %ss on %s", te.timeout, path)
         except subprocess.CalledProcessError as cpe:
@@ -205,7 +248,7 @@ def main() -> None:
 
     if args.tree_dirs:
         files = collect_files(args.tree_dirs, recursive=args.recursive)
-    else:
+    elif args.data_dir:
         data_dir = args.data_dir
         files = [
             os.path.join(dp, f)
@@ -214,6 +257,11 @@ def main() -> None:
             if os.path.isfile(os.path.join(dp, f))
         ]
         files = sorted(files)
+    else:
+        files = [p for p in file_list_entries if os.path.exists(p)]
+        missing = [p for p in file_list_entries if not os.path.exists(p)]
+        for m in missing:
+            logging.warning("FileListMode: missing path %s", m)
     with ThreadPoolExecutor(max_workers=workers) as executor:
         list(executor.map(run_on_file, files))
 
