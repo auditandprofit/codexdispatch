@@ -5,8 +5,8 @@ Simple dispatcher for running the bundled Codex binary over multiple files in pa
 ## Usage
 
 ```
-python dispatch.py TEMPLATE --data-dir DIR --output-dir OUT --workers N [-C WORK_DIR] [--codex-bin PATH]
-python dispatch.py TEMPLATE --tree-dirs DIR [DIR ...] --output-dir OUT --workers N [--recursive/--no-recursive] [-C WORK_DIR] [--codex-bin PATH]
+python dispatch.py TEMPLATE --data-dir DIR --output-dir OUT --workers N [-C WORK_DIR] [--codex-bin PATH] [--timeout SEC]
+python dispatch.py TEMPLATE --tree-dirs DIR [DIR ...] --output-dir OUT --workers N [--recursive/--no-recursive] [-C WORK_DIR] [--codex-bin PATH] [--timeout SEC]
 ```
 
 - `TEMPLATE` - path to the prompt template.
@@ -18,6 +18,9 @@ python dispatch.py TEMPLATE --tree-dirs DIR [DIR ...] --output-dir OUT --workers
 - `--recursive` / `--no-recursive` - control whether tree mode walks subdirectories (default: recursive).
 - `--codex-bin` - path to the codex binary. If not provided, the script looks for
   `codex` in `PATH` and then searches the current directory.
+- `--timeout` - per-file wall clock limit in seconds (default 900). Set to `0`
+  to disable; can also be specified via `CODEX_DISPATCH_TIMEOUT` environment
+  variable.
 
 In flat mode, each file in `DATA_DIR` is appended to the template and sent to Codex. In tree mode every file discovered under `--tree-dirs` is processed the same way, with its parent directory used as the working directory. Results mirror the source tree: a file `src/example.txt` will produce `OUTPUT_DIR/src/example.txt-codex`. This avoids collisions when different directories contain files with the same name.
 
