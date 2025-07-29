@@ -5,10 +5,11 @@ import tempfile
 import json
 
 import unittest
-from unittest import mock
+import unittest.mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-import dispatch
+import dispatch  # noqa: E402
+
 
 class TestParseArgs(unittest.TestCase):
     def test_parse_data_dir(self):
@@ -249,6 +250,7 @@ class DispatchIntegration(unittest.TestCase):
         self.assertEqual(len(mapping), 1)
         self.assertEqual(mapping[0]["input"], os.path.abspath(f1))
         self.assertEqual(mapping[0]["output"], os.path.abspath(out1))
+
 
 if __name__ == "__main__":
     unittest.main()

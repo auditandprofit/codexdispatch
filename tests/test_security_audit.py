@@ -6,7 +6,8 @@ import json
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-import dispatch
+import dispatch  # noqa: E402
+
 
 class TestParseCodexJson(unittest.TestCase):
     def test_parse_good(self):
@@ -18,6 +19,7 @@ class TestParseCodexJson(unittest.TestCase):
     def test_parse_bad(self):
         res = dispatch.parse_codex_json("not-json")
         self.assertEqual(res, {"notes": [], "followup": []})
+
 
 class TestAuditBfs(unittest.TestCase):
     def setUp(self):
@@ -71,8 +73,18 @@ with open(out, 'w') as fh:
             "--depth", "2",
         ]
         self.run_audit({"B_PATH": b})
-        d0_a = os.path.join(outdir, "security", "depth_0", os.path.join("1_" + os.path.basename(tree), "a.txt") + "-audit.json")
-        d0_b = os.path.join(outdir, "security", "depth_0", os.path.join("1_" + os.path.basename(tree), "b.txt") + "-audit.json")
+        d0_a = os.path.join(
+            outdir,
+            "security",
+            "depth_0",
+            os.path.join("1_" + os.path.basename(tree), "a.txt") + "-audit.json",
+        )
+        d0_b = os.path.join(
+            outdir,
+            "security",
+            "depth_0",
+            os.path.join("1_" + os.path.basename(tree), "b.txt") + "-audit.json",
+        )
         self.assertTrue(os.path.exists(d0_a))
         self.assertTrue(os.path.exists(d0_b))
         d1 = os.path.join(outdir, "security", "depth_1")
@@ -164,6 +176,7 @@ class TestMockAudit(unittest.TestCase):
         with open(os.path.join(outdir, "security_summary.json"), "r", encoding="utf-8") as f:
             summary = json.load(f)
         self.assertTrue(len(summary) >= 3)
+
 
 if __name__ == "__main__":
     unittest.main()
