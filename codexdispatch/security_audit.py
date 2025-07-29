@@ -1,3 +1,5 @@
+"""Implements a recursive security audit using Codex to analyze files and follow discovered leads."""
+
 import os
 import sys
 import logging
