@@ -35,3 +35,8 @@ With `--output-dir` and `--workers` provided as options, arguments can be specif
 Running with `--security-audit` processes files in a BFS search. The generic template at `prompts/security_audit_generic.txt` is always used as the system prompt. Provide a goal for the audit using the mandatory `--audit-focus` option. The focus text is appended after the template for each evaluation.
 
 When used with `--file-list`, each line may reference either a file or a directory. Directories are walked according to the `--recursive` setting. The optional `--audit-root` parameter sets a base directory used to resolve relative lead paths from Codex and restricts the audit to that tree.
+
+For testing workflows without invoking Codex, combine `--security-audit` with
+`--mock-audit`. This stub mode generates deterministic JSON results and random
+follow-up paths within the audited tree, writing outputs to the requested
+directory just like a real run.
