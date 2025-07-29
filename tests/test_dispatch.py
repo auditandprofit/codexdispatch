@@ -19,6 +19,26 @@ class TestParseArgs(unittest.TestCase):
         self.assertIsNone(args.tree_dirs)
         self.assertIsNone(args.file_list)
 
+    def test_parse_passes_map(self):
+        argv = [
+            "dispatch.py",
+            "tmpl",
+            "--tree-dirs",
+            "src",
+            "-o",
+            "out",
+            "-j",
+            "1",
+            "--passes",
+            "3",
+            "--map-name",
+            "map.json",
+        ]
+        with unittest.mock.patch.object(sys, "argv", argv):
+            args = dispatch.parse_args()
+        self.assertEqual(args.passes, 3)
+        self.assertEqual(args.map_name, "map.json")
+
     def test_parse_tree_dirs(self):
         argv = [
             "dispatch.py",
@@ -185,6 +205,50 @@ class DispatchIntegration(unittest.TestCase):
         out_b = os.path.join(outdir, os.path.relpath(fb) + "-codex")
         self.assertTrue(os.path.exists(out_a))
         self.assertTrue(os.path.exists(out_b))
+
+    def test_multi_pass_tree_dirs(self):
+        template = os.path.join(self.tmpdir.name, "tmpl.txt")
+        with open(template, "w", encoding="utf-8") as f:
+            f.write("T")
+        tree = os.path.join(self.tmpdir.name, "tree")
+        os.mkdir(tree)
+        f1 = os.path.join(tree, "file.txt")
+        with open(f1, "w", encoding="utf-8") as f:
+            f.write("X")
+        outdir = os.path.join(self.tmpdir.name, "out")
+        os.mkdir(outdir)
+
+        self.run_dispatch([
+            template,
+            "--tree-dirs",
+            tree,
+            "-o",
+            outdir,
+            "-j",
+            "1",
+            "--codex-bin",
+            self.codex,
+            "--passes",
+            "2",
+            "--map-name",
+            "map.json",
+        ])
+
+        prefix = "1_" + os.path.basename(tree)
+        out1 = os.path.join(outdir, f"1_{prefix}/file.txt-codex")
+        out2 = os.path.join(outdir, f"2_{prefix}/file.txt-codex")
+        with open(out1, "r", encoding="utf-8") as f:
+            first = f.read()
+        with open(out2, "r", encoding="utf-8") as f:
+            second = f.read()
+        self.assertEqual(first, "T\nX")
+        self.assertEqual(second, f"T\n{first}\nX")
+        map_file = os.path.join(outdir, "map.json")
+        with open(map_file, "r", encoding="utf-8") as f:
+            mapping = json.load(f)
+        self.assertEqual(len(mapping), 1)
+        self.assertEqual(mapping[0]["input"], os.path.abspath(f1))
+        self.assertEqual(mapping[0]["output"], os.path.abspath(out1))
 
 if __name__ == "__main__":
     unittest.main()
