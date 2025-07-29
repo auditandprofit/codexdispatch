@@ -13,7 +13,7 @@ python dispatch.py TEMPLATE --file-list LIST --output-dir OUT --workers N -C WOR
 - `TEMPLATE` - path to the prompt template.
 - `--data-dir` - directory containing input files (flat mode).
 - `--tree-dirs` - one or more directories to recursively walk (tree mode).
-- `--file-list` - text file containing paths to process, one per line (file-list mode).
+- `--file-list` - text file containing paths to process, one per line (file-list mode). In security audit mode entries may be either files or directories.
 - `--output-dir` - directory where results will be written.
 - `--workers` - number of parallel workers.
 - `-C`, `--work-dir` - working directory to execute Codex in. Defaults to the current directory. In file-list mode this directory is used for all files; in tree mode the default is each file's parent.
@@ -33,3 +33,5 @@ With `--output-dir` and `--workers` provided as options, arguments can be specif
 ## Security audit mode
 
 Running with `--security-audit` processes files in a BFS search. The generic template at `prompts/security_audit_generic.txt` is always used as the system prompt. Provide a goal for the audit using the mandatory `--audit-focus` option. The focus text is appended after the template for each evaluation.
+
+When used with `--file-list`, each line may reference either a file or a directory. Directories are walked according to the `--recursive` setting. The optional `--audit-root` parameter sets a base directory used to resolve relative lead paths from Codex and restricts the audit to that tree.

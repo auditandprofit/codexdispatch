@@ -88,6 +88,15 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="specific focus for the security audit",
     )
+    parser.add_argument(
+        "--audit-root",
+        dest="audit_root",
+        default=None,
+        help=(
+            "base directory for resolving leads and limiting the search "
+            "during security audits"
+        ),
+    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--data-dir",
@@ -224,9 +233,25 @@ def run_security_audit(args: argparse.Namespace) -> None:
             ]
         file_list_entries = sorted(dict.fromkeys(file_list_entries))
 
+    def expand_paths(paths: list[str]) -> tuple[list[str], list[str]]:
+        out_files: list[str] = []
+        roots: list[str] = []
+        for raw in paths:
+            p = os.path.abspath(raw)
+            if os.path.isdir(p):
+                roots.append(p)
+                out_files.extend(collect_files([p], recursive=args.recursive))
+            elif os.path.isfile(p):
+                roots.append(os.path.dirname(p))
+                out_files.append(p)
+            else:
+                logging.warning("FileListMode: missing path %s", raw)
+        out_files = sorted(dict.fromkeys(out_files))
+        roots = sorted(dict.fromkeys(roots))
+        return out_files, roots
+
     if args.tree_dirs:
-        files = collect_files(args.tree_dirs, recursive=args.recursive)
-        root_dirs = [os.path.abspath(d) for d in args.tree_dirs]
+        files, root_dirs = expand_paths(args.tree_dirs)
     elif args.data_dir:
         data_dir = args.data_dir
         files = [
@@ -238,11 +263,14 @@ def run_security_audit(args: argparse.Namespace) -> None:
         files = sorted(files)
         root_dirs = [os.path.abspath(data_dir)]
     else:
-        files = [p for p in file_list_entries if os.path.exists(p)]
-        missing = [p for p in file_list_entries if not os.path.exists(p)]
-        for m in missing:
-            logging.warning("FileListMode: missing path %s", m)
-        root_dirs = list({os.path.dirname(os.path.abspath(p)) for p in files})
+        files, root_dirs = expand_paths(file_list_entries)
+
+    if args.audit_root:
+        audit_root = os.path.abspath(args.audit_root)
+        if not os.path.isdir(audit_root):
+            logging.error("--audit-root %s does not exist", audit_root)
+            sys.exit(1)
+        root_dirs = [audit_root]
 
     def rel_and_root(path: str) -> tuple[str, str | None]:
         if args.tree_dirs:
@@ -350,11 +378,24 @@ def run_security_audit(args: argparse.Namespace) -> None:
                 for lead in parsed.get("leads", []):
                     lp = lead.get("path")
                     if lp:
-                        abs_lp = os.path.abspath(lp)
-                        if os.path.exists(abs_lp) and any(
-                            os.path.commonpath([abs_lp, rd]) == rd for rd in root_dirs
+                        if args.audit_root:
+                            cand = (
+                                os.path.join(args.audit_root, lp)
+                                if not os.path.isabs(lp)
+                                else lp
+                            )
+                            cand = os.path.abspath(cand)
+                            if not os.path.exists(cand):
+                                alt = os.path.abspath(os.path.join(args.audit_root, lp.lstrip(os.sep)))
+                                cand = alt if os.path.exists(alt) else None
+                        else:
+                            cand = os.path.abspath(lp)
+                            if not os.path.exists(cand):
+                                cand = None
+                        if cand and any(
+                            os.path.commonpath([cand, rd]) == rd for rd in root_dirs
                         ):
-                            leads.append(abs_lp)
+                            leads.append(cand)
                     else:
                         leads.append(None)
                 return p, leads

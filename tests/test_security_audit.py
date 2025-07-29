@@ -82,5 +82,44 @@ with open(out, 'w') as fh:
         self.assertEqual(set(summary.keys()), {os.path.abspath(a), os.path.abspath(b)})
         self.assertEqual(summary[os.path.abspath(b)]["depth"], 0)
 
+    def test_audit_root_resolves_relative(self):
+        tree = os.path.join(self.tmpdir.name, "tree2")
+        os.makedirs(os.path.join(tree, "sub"))
+        a = os.path.join(tree, "a.txt")
+        b = os.path.join(tree, "sub", "b.txt")
+        for p in (a, b):
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(p)
+        lst = os.path.join(self.tmpdir.name, "list.txt")
+        with open(lst, "w", encoding="utf-8") as f:
+            f.write(a + "\n")
+        outdir = os.path.join(self.tmpdir.name, "out2")
+        os.mkdir(outdir)
+        self.args = [
+            "dummy",
+            "--file-list",
+            lst,
+            "-o",
+            outdir,
+            "-j",
+            "1",
+            "--codex-bin",
+            self.codex,
+            "--security-audit",
+            "--audit-focus",
+            "TEST",
+            "--depth",
+            "2",
+            "--audit-root",
+            tree,
+            "-C",
+            tree,
+        ]
+        self.run_audit({"B_PATH": "sub/b.txt"})
+        with open(os.path.join(outdir, "security_summary.json"), "r", encoding="utf-8") as f:
+            summary = json.load(f)
+        self.assertIn(os.path.abspath(b), summary)
+        self.assertEqual(summary[os.path.abspath(b)]["depth"], 1)
+
 if __name__ == "__main__":
     unittest.main()
