@@ -1,7 +1,9 @@
 import os
+import sys
 import subprocess
 import logging
 import json
+import shutil
 
 
 def collect_files(dirs: list[str], recursive: bool = True) -> list[str]:
@@ -19,6 +21,44 @@ def collect_files(dirs: list[str], recursive: bool = True) -> list[str]:
                 if os.path.isfile(path):
                     files.append(path)
     return sorted(files)
+
+
+def find_codex_bin(path_hint: str | None) -> str:
+    """Return the path to the codex binary.
+
+    If *path_hint* is provided it must exist, otherwise the function searches
+    ``PATH`` and finally the current directory for executables containing
+    ``"codex"`` in their name. The process exits with status 1 if no suitable
+    binary is found or if multiple candidates exist in the current directory.
+    """
+
+    if path_hint:
+        codex_path = os.path.abspath(path_hint)
+        if not os.path.exists(codex_path):
+            logging.error("Codex binary not found at %s", codex_path)
+            sys.exit(1)
+        return codex_path
+
+    codex_bin = shutil.which("codex")
+    if codex_bin is not None:
+        return codex_bin
+
+    candidates = [
+        f
+        for f in os.listdir(os.getcwd())
+        if os.path.isfile(f) and "codex" in f and os.access(f, os.X_OK)
+    ]
+    if len(candidates) == 1:
+        return os.path.abspath(candidates[0])
+    if len(candidates) > 1:
+        logging.error(
+            "Multiple codex binaries found in current directory: %s",
+            ", ".join(candidates),
+        )
+        sys.exit(1)
+
+    logging.error("Codex binary not found in PATH or current directory")
+    sys.exit(1)
 
 
 def _invoke_codex(cmd: list[str], prompt: str, timeout: int | None, path: str) -> None:

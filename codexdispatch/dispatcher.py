@@ -2,14 +2,13 @@ import os
 import sys
 import logging
 import uuid
-import shutil
 import subprocess
 import json
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List
 
 from .args import parse_args
-from .utils import collect_files, _invoke_codex
+from .utils import collect_files, _invoke_codex, find_codex_bin
 from .security_audit import run_security_audit
 
 
@@ -58,31 +57,7 @@ def main() -> None:
             ]
         file_list_entries = sorted(dict.fromkeys(file_list_entries))
 
-    codex_bin = args.codex_bin
-    if codex_bin:
-        codex_bin = os.path.abspath(codex_bin)
-        if not os.path.exists(codex_bin):
-            logging.error("Codex binary not found at %s", codex_bin)
-            sys.exit(1)
-    else:
-        codex_bin = shutil.which("codex")
-        if codex_bin is None:
-            candidates = [
-                f
-                for f in os.listdir(os.getcwd())
-                if os.path.isfile(f) and "codex" in f and os.access(f, os.X_OK)
-            ]
-            if len(candidates) == 1:
-                codex_bin = os.path.abspath(candidates[0])
-            elif len(candidates) > 1:
-                logging.error(
-                    "Multiple codex binaries found in current directory: %s",
-                    ", ".join(candidates),
-                )
-                sys.exit(1)
-            else:
-                logging.error("Codex binary not found in PATH or current directory")
-                sys.exit(1)
+    codex_bin = find_codex_bin(args.codex_bin)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

@@ -1,5 +1,5 @@
 from .args import parse_args
-from .utils import collect_files, parse_codex_json, _invoke_codex
+from .utils import collect_files, parse_codex_json, _invoke_codex, find_codex_bin
 from .security_audit import run_security_audit, AUDIT_TEMPLATE_PATH
 from .dispatcher import main
 
@@ -8,6 +8,7 @@ __all__ = [
     "collect_files",
     "parse_codex_json",
     "_invoke_codex",
+    "find_codex_bin",
     "run_security_audit",
     "AUDIT_TEMPLATE_PATH",
     "main",
