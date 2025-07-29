@@ -30,6 +30,7 @@ def _invoke_codex(cmd: list[str], prompt: str, timeout: int | None, path: str) -
                 input=prompt.encode(),
                 check=True,
                 timeout=timeout or None,
+                stderr=subprocess.PIPE,
             )
             break
         except subprocess.TimeoutExpired:
