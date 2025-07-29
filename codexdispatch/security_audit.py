@@ -12,7 +12,13 @@ from heapq import heappush, heappop
 from pathlib import Path
 import re
 
-from .utils import collect_files, parse_codex_json, _invoke_codex, find_codex_bin
+from .utils import (
+    collect_files,
+    parse_codex_json,
+    _invoke_codex,
+    find_codex_bin,
+    load_files,
+)
 
 AUDIT_TEMPLATE_PATH = os.path.join(
     os.path.dirname(__file__), "..", "prompts", "security_audit_generic.txt"
@@ -71,15 +77,8 @@ def run_security_audit(args) -> None:
     if args.tree_dirs:
         files, root_dirs = expand_paths(args.tree_dirs)
     elif args.data_dir:
-        data_dir = args.data_dir
-        files = [
-            os.path.join(dp, f)
-            for dp, _, filenames in os.walk(data_dir)
-            for f in filenames
-            if os.path.isfile(os.path.join(dp, f))
-        ]
-        files = sorted(files)
-        root_dirs = [os.path.abspath(data_dir)]
+        files = load_files(args.data_dir)
+        root_dirs = [os.path.abspath(args.data_dir)]
     else:
         files, root_dirs = expand_paths(file_list_entries)
 
