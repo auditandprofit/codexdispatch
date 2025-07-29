@@ -1,3 +1,5 @@
+"""Command-line argument parser for the Codex dispatcher and optional security audit mode."""
+
 import argparse
 import os
 

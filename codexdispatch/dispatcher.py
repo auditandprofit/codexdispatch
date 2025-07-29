@@ -1,3 +1,5 @@
+"""Dispatches Codex runs across multiple files and modes, coordinating workers and multi-pass processing."""
+
 import os
 import sys
 import logging
