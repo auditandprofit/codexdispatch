@@ -9,6 +9,7 @@ import uuid
 import json
 from collections import defaultdict
 import re
+import random
 
 
 """Dispatch tool for running the Codex binary over many files in parallel.
@@ -98,6 +99,12 @@ def parse_args() -> argparse.Namespace:
             "during security audits"
         ),
     )
+    parser.add_argument(
+        "--mock-audit",
+        action="store_true",
+        default=False,
+        help="generate fake audit responses instead of invoking Codex",
+    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--data-dir",
@@ -165,6 +172,8 @@ def parse_args() -> argparse.Namespace:
         help="mapping filename for multi-pass mode",
     )
     args = parser.parse_args()
+    if args.mock_audit and not args.security_audit:
+        parser.error("--mock-audit requires --security-audit")
     if args.security_audit:
         if not args.audit_focus:
             parser.error("--audit-focus is required with --security-audit")
@@ -187,30 +196,33 @@ def run_security_audit(args: argparse.Namespace) -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     codex_bin = args.codex_bin
-    if codex_bin:
-        codex_bin = os.path.abspath(codex_bin)
-        if not os.path.exists(codex_bin):
-            logging.error("Codex binary not found at %s", codex_bin)
-            sys.exit(1)
+    if not args.mock_audit:
+        if codex_bin:
+            codex_bin = os.path.abspath(codex_bin)
+            if not os.path.exists(codex_bin):
+                logging.error("Codex binary not found at %s", codex_bin)
+                sys.exit(1)
+        else:
+            codex_bin = shutil.which("codex")
+            if codex_bin is None:
+                candidates = [
+                    f
+                    for f in os.listdir(os.getcwd())
+                    if os.path.isfile(f) and "codex" in f and os.access(f, os.X_OK)
+                ]
+                if len(candidates) == 1:
+                    codex_bin = os.path.abspath(candidates[0])
+                elif len(candidates) > 1:
+                    logging.error(
+                        "Multiple codex binaries found in current directory: %s",
+                        ", ".join(candidates),
+                    )
+                    sys.exit(1)
+                else:
+                    logging.error("Codex binary not found in PATH or current directory")
+                    sys.exit(1)
     else:
-        codex_bin = shutil.which("codex")
-        if codex_bin is None:
-            candidates = [
-                f
-                for f in os.listdir(os.getcwd())
-                if os.path.isfile(f) and "codex" in f and os.access(f, os.X_OK)
-            ]
-            if len(candidates) == 1:
-                codex_bin = os.path.abspath(candidates[0])
-            elif len(candidates) > 1:
-                logging.error(
-                    "Multiple codex binaries found in current directory: %s",
-                    ", ".join(candidates),
-                )
-                sys.exit(1)
-            else:
-                logging.error("Codex binary not found in PATH or current directory")
-                sys.exit(1)
+        codex_bin = codex_bin or "codex"
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -271,6 +283,13 @@ def run_security_audit(args: argparse.Namespace) -> None:
             logging.error("--audit-root %s does not exist", audit_root)
             sys.exit(1)
         root_dirs = [audit_root]
+
+    all_files: list[str] = []
+    if args.mock_audit:
+        for rd in root_dirs:
+            all_files.extend(collect_files([rd], recursive=True))
+        all_files = sorted(dict.fromkeys(all_files))
+        random.seed(0)
 
     def rel_and_root(path: str) -> tuple[str, str | None]:
         if args.tree_dirs:
@@ -362,26 +381,40 @@ def run_security_audit(args: argparse.Namespace) -> None:
 
                 os.makedirs(os.path.dirname(out_base), exist_ok=True)
 
-                cmd = [
-                    codex_bin,
-                    "exec",
-                    "--output-last-message",
-                    out_base,
-                    "--dangerously-bypass-approvals-and-sandbox",
-                    "--skip-git-repo-check",
-                    "-C",
-                    work_dir,
-                ]
+                if args.mock_audit:
+                    notes = [f"mock note for {os.path.basename(token)}"]
+                    follow = []
+                    if all_files:
+                        fp = random.choice(all_files)
+                        root_dir = next(
+                            (rd for rd in root_dirs if os.path.commonpath([fp, rd]) == rd),
+                            root_dirs[0] if root_dirs else os.path.dirname(fp),
+                        )
+                        follow.append(os.path.relpath(fp, root_dir))
+                    mock_res = {"notes": notes, "followup": follow}
+                    with open(out_base, "w", encoding="utf-8") as mf:
+                        mf.write("MOCK\n" + json.dumps(mock_res))
+                else:
+                    cmd = [
+                        codex_bin,
+                        "exec",
+                        "--output-last-message",
+                        out_base,
+                        "--dangerously-bypass-approvals-and-sandbox",
+                        "--skip-git-repo-check",
+                        "-C",
+                        work_dir,
+                    ]
 
-                try:
-                    _invoke_codex(cmd, prompt, args.timeout, key)
-                except subprocess.TimeoutExpired as te:
-                    logging.error("TIMEOUT after %ss on %s", te.timeout, key)
-                except subprocess.CalledProcessError as cpe:
-                    stderr = (cpe.stderr or b"").decode(errors="ignore")
-                    logging.error("Codex exit %s on %s\n%s", cpe.returncode, key, stderr)
-                except Exception as exc:
-                    logging.error("Failed processing %s: %s", key, exc)
+                    try:
+                        _invoke_codex(cmd, prompt, args.timeout, key)
+                    except subprocess.TimeoutExpired as te:
+                        logging.error("TIMEOUT after %ss on %s", te.timeout, key)
+                    except subprocess.CalledProcessError as cpe:
+                        stderr = (cpe.stderr or b"").decode(errors="ignore")
+                        logging.error("Codex exit %s on %s\n%s", cpe.returncode, key, stderr)
+                    except Exception as exc:
+                        logging.error("Failed processing %s: %s", key, exc)
 
                 try:
                     with open(out_base, "r", encoding="utf-8") as of:

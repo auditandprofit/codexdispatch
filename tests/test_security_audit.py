@@ -121,5 +121,49 @@ with open(out, 'w') as fh:
         self.assertIn(os.path.abspath(b), summary)
         self.assertEqual(summary[os.path.abspath(b)]["depth"], 1)
 
+
+class TestMockAudit(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+
+    def run_audit(self):
+        subprocess.check_call([sys.executable, "dispatch.py"] + self.args)
+
+    def test_mock_mode_generates_outputs(self):
+        root = os.path.join(self.tmpdir.name, "proj")
+        os.mkdir(root)
+        for idx in range(3):
+            with open(os.path.join(root, f"f{idx}.txt"), "w", encoding="utf-8") as f:
+                f.write("x")
+        outdir = os.path.join(self.tmpdir.name, "out")
+        os.mkdir(outdir)
+        self.args = [
+            "dummy",
+            "--tree-dirs",
+            root,
+            "-o",
+            outdir,
+            "-j",
+            "1",
+            "--security-audit",
+            "--audit-focus",
+            "TEST",
+            "--depth",
+            "2",
+            "--mock-audit",
+        ]
+        self.run_audit()
+        depth0 = os.path.join(outdir, "security", "depth_0")
+        found = False
+        for rootdir, _, files in os.walk(depth0):
+            if any(f.endswith("-audit.json") for f in files):
+                found = True
+                break
+        self.assertTrue(found)
+        with open(os.path.join(outdir, "security_summary.json"), "r", encoding="utf-8") as f:
+            summary = json.load(f)
+        self.assertTrue(len(summary) >= 3)
+
 if __name__ == "__main__":
     unittest.main()
