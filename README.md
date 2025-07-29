@@ -29,3 +29,7 @@ In flat mode, each file in `DATA_DIR` is appended to the template and sent to Co
 File-list mode reads paths from a text file and processes exactly those files. Each prompt contains the full resolved path on a separate line before its contents. The working directory provided via `-C` is used for all Codex executions, which can be helpful when a shared virtual environment or imports are needed.
 
 With `--output-dir` and `--workers` provided as options, arguments can be specified in any order.
+
+## Security audit mode
+
+Running with `--security-audit` processes files in a BFS search and expects a separate prompt describing the audit workflow. This repository ships with `prompts/security_audit_generic.txt`, a generic template that reports security findings and suggests follow-up files via absolute paths. Fork or modify this file to focus on particular bug classes (e.g. OWASP-only, memory-safety-only) or to tweak the output schema.
