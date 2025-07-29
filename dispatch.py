@@ -8,6 +8,7 @@ import shutil
 import uuid
 import json
 from collections import defaultdict
+import re
 
 
 """Dispatch tool for running the Codex binary over many files in parallel.
@@ -64,7 +65,7 @@ def parse_codex_json(text: str) -> dict:
         return json.loads(text.splitlines()[-1])
     except (json.JSONDecodeError, IndexError):
         logging.error("Non-JSON response")
-        return {"findings": [], "leads": []}
+        return {"notes": [], "followup": []}
 
 
 def parse_args() -> argparse.Namespace:
@@ -182,7 +183,6 @@ AUDIT_TEMPLATE_PATH = os.path.join(
 def run_security_audit(args: argparse.Namespace) -> None:
     with open(AUDIT_TEMPLATE_PATH, "r", encoding="utf-8") as f:
         base_template = f.read()
-    template_prefix = f"{base_template}\n{args.audit_focus}"
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -291,49 +291,76 @@ def run_security_audit(args: argparse.Namespace) -> None:
         else:
             return os.path.relpath(path), None
 
-    def build_prompt(data: str, prev_blobs: list[str]) -> str:
-        parts = [template_prefix]
+    def build_prompt(data: str, prev_blobs: list[str], depth: int) -> str:
+        prefix = (
+            base_template.replace("{depth}", str(depth)).replace("{goal}", args.audit_focus)
+        )
+        parts = [prefix]
         parts.extend(prev_blobs)
         parts.append(data)
         return "\n".join(parts)
+
+    def resolve_path(lead: str) -> str | None:
+        if args.audit_root:
+            base = os.path.abspath(args.audit_root)
+            cand = os.path.join(base, lead) if not os.path.isabs(lead) else lead
+            cand = os.path.abspath(cand)
+            if os.path.exists(cand) and os.path.commonpath([cand, base]) == base:
+                return cand
+            return None
+        for rd in root_dirs:
+            cand = os.path.join(rd, lead) if not os.path.isabs(lead) else lead
+            cand = os.path.abspath(cand)
+            if os.path.exists(cand) and os.path.commonpath([cand, rd]) == rd:
+                return cand
+        return None
 
     summary: dict[str, dict] = {}
     prev_map: defaultdict[str, list[str]] = defaultdict(list)
     seen: set[str] = set()
 
-    queue = sorted(dict.fromkeys(os.path.abspath(p) for p in files))
+    queue: list[tuple[str, str]] = [("path", os.path.abspath(p)) for p in files]
     depth_max = args.depth
 
     for depth in range(depth_max):
         if not queue:
             break
-        next_q: list[str] = []
+        next_q: list[tuple[str, str]] = []
         depth_dir = os.path.join(args.output_dir, "security", f"depth_{depth}")
         with ThreadPoolExecutor(max_workers=args.workers) as executor:
             futures = {}
 
-            def worker(p: str) -> tuple[str, list[str]]:
-                try:
-                    with open(p, "r", encoding="utf-8") as f:
-                        data = f.read()
-                except UnicodeDecodeError:
-                    logging.warning("Skipping non-text file %s", p)
-                    return p, []
-
-                if args.file_list:
-                    file_data = f"{os.path.abspath(p)}\n{data}"
+            def worker(item: tuple[str, str]) -> tuple[str, list[tuple[str, str]]]:
+                kind, token = item
+                key = token
+                if kind == "path":
+                    try:
+                        with open(token, "r", encoding="utf-8") as f:
+                            data = f.read()
+                    except UnicodeDecodeError:
+                        logging.warning("Skipping non-text file %s", token)
+                        return key, []
+                    if args.file_list:
+                        file_data = f"{os.path.abspath(token)}\n{data}"
+                    else:
+                        file_data = data
                 else:
-                    file_data = data
+                    file_data = ""
 
-                prompt = build_prompt(file_data, prev_map[p])
+                prompt = build_prompt(file_data, prev_map[key], depth)
 
-                rel_path, root = rel_and_root(p)
-                out_base = os.path.join(depth_dir, f"{rel_path}-audit")
+                if kind == "path":
+                    rel_path, root = rel_and_root(token)
+                    out_base = os.path.join(depth_dir, f"{rel_path}-audit")
+                    work_dir = args.work_dir if args.file_list else (
+                        os.path.dirname(token) if args.tree_dirs else args.work_dir
+                    )
+                else:
+                    slug = re.sub(r"[^A-Za-z0-9._-]+", "_", key)[:50]
+                    out_base = os.path.join(depth_dir, f"{slug}-audit")
+                    work_dir = args.work_dir
+
                 os.makedirs(os.path.dirname(out_base), exist_ok=True)
-
-                work_dir = args.work_dir if args.file_list else (
-                    os.path.dirname(p) if args.tree_dirs else args.work_dir
-                )
 
                 cmd = [
                     codex_bin,
@@ -347,14 +374,14 @@ def run_security_audit(args: argparse.Namespace) -> None:
                 ]
 
                 try:
-                    _invoke_codex(cmd, prompt, args.timeout, p)
+                    _invoke_codex(cmd, prompt, args.timeout, key)
                 except subprocess.TimeoutExpired as te:
-                    logging.error("TIMEOUT after %ss on %s", te.timeout, p)
+                    logging.error("TIMEOUT after %ss on %s", te.timeout, key)
                 except subprocess.CalledProcessError as cpe:
                     stderr = (cpe.stderr or b"").decode(errors="ignore")
-                    logging.error("Codex exit %s on %s\n%s", cpe.returncode, p, stderr)
+                    logging.error("Codex exit %s on %s\n%s", cpe.returncode, key, stderr)
                 except Exception as exc:
-                    logging.error("Failed processing %s: %s", p, exc)
+                    logging.error("Failed processing %s: %s", key, exc)
 
                 try:
                     with open(out_base, "r", encoding="utf-8") as of:
@@ -365,58 +392,35 @@ def run_security_audit(args: argparse.Namespace) -> None:
                 parsed = parse_codex_json(raw)
                 with open(out_base + ".json", "w", encoding="utf-8") as jf:
                     json.dump(parsed, jf, indent=2)
-                with open(out_base + ".txt", "w", encoding="utf-8") as tf:
-                    for item in parsed.get("findings", []):
-                        tf.write(json.dumps(item) + "\n")
 
                 if raw:
-                    prev_map[p].append(raw.splitlines()[-1])
+                    prev_map[key].append(raw.splitlines()[-1])
 
-                summary[p] = {"depth": depth, "findings": parsed.get("findings", [])}
+                summary[key] = {"depth": depth, "notes": parsed.get("notes", [])}
 
-                leads: list[str | None] = []
-                for lead in parsed.get("leads", []):
-                    lp = lead.get("path")
-                    if lp:
-                        if args.audit_root:
-                            cand = (
-                                os.path.join(args.audit_root, lp)
-                                if not os.path.isabs(lp)
-                                else lp
-                            )
-                            cand = os.path.abspath(cand)
-                            if not os.path.exists(cand):
-                                alt = os.path.abspath(os.path.join(args.audit_root, lp.lstrip(os.sep)))
-                                cand = alt if os.path.exists(alt) else None
-                        else:
-                            cand = os.path.abspath(lp)
-                            if not os.path.exists(cand):
-                                cand = None
-                        if cand and any(
-                            os.path.commonpath([cand, rd]) == rd for rd in root_dirs
-                        ):
-                            leads.append(cand)
+                leads: list[tuple[str, str]] = []
+                for fl in parsed.get("followup", []):
+                    resolved = resolve_path(fl)
+                    if resolved:
+                        leads.append(("path", resolved))
                     else:
-                        leads.append(None)
-                return p, leads
+                        leads.append(("note", fl))
+                return key, leads
 
-            for p in queue:
-                futures[executor.submit(worker, p)] = p
+            for item in queue:
+                futures[executor.submit(worker, item)] = item
 
             results = [fut.result() for fut in futures]
 
-        for p, leads in results:
+        for key, leads in results:
             if depth < depth_max - 1:
                 for ld in leads:
-                    if ld is None:
-                        if p not in seen and p not in next_q:
-                            next_q.append(p)
-                    else:
-                        if ld not in seen and ld not in next_q:
-                            next_q.append(ld)
+                    token = ld[1]
+                    if token not in seen and ld not in next_q:
+                        next_q.append(ld)
 
-        seen.update(queue)
-        queue = [q for q in next_q if q not in seen]
+        seen.update([item[1] for item in queue])
+        queue = [q for q in next_q if q[1] not in seen]
 
     with open(os.path.join(args.output_dir, "security_summary.json"), "w", encoding="utf-8") as sf:
         json.dump(summary, sf, indent=2)
