@@ -26,7 +26,7 @@ python dispatch.py TEMPLATE --file-list LIST --output-dir OUT --workers N -C WOR
 
 In flat mode, each file in `DATA_DIR` is appended to the template and sent to Codex. In tree mode every file discovered under `--tree-dirs` is processed the same way, with its parent directory used as the working directory. Results mirror the source tree: a file `src/example.txt` will produce `OUTPUT_DIR/src/example.txt-codex`. This avoids collisions when different directories contain files with the same name.
 
-File-list mode reads paths from a text file and processes exactly those files. Each prompt contains the full resolved path on a separate line before its contents. The working directory provided via `-C` is used for all Codex executions, which can be helpful when a shared virtual environment or imports are needed.
+File-list mode reads paths from a text file and processes exactly those files. By default each prompt contains the full resolved path on a separate line before its contents. Provide `--no-prepend-path` to omit this line. The working directory provided via `-C` is used for all Codex executions, which can be helpful when a shared virtual environment or imports are needed.
 
 With `--output-dir` and `--workers` provided as options, arguments can be specified in any order.
 

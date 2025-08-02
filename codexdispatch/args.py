@@ -76,6 +76,13 @@ def parse_args() -> argparse.Namespace:
         help="text file containing absolute/relative paths, one per line",
     )
     parser.add_argument(
+        "--prepend-path",
+        dest="prepend_path",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="prepend full resolved path before file contents in file-list mode",
+    )
+    parser.add_argument(
         "-o",
         "--output-dir",
         required=True,
