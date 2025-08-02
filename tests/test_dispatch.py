@@ -73,6 +73,23 @@ class TestParseArgs(unittest.TestCase):
         self.assertEqual(args.file_list, "list.txt")
         self.assertIsNone(args.data_dir)
         self.assertIsNone(args.tree_dirs)
+        self.assertTrue(args.prepend_path)
+
+    def test_parse_no_prepend_path(self):
+        argv = [
+            "dispatch.py",
+            "tmpl",
+            "--file-list",
+            "list.txt",
+            "-o",
+            "out",
+            "-j",
+            "1",
+            "--no-prepend-path",
+        ]
+        with unittest.mock.patch.object(sys, "argv", argv):
+            args = dispatch.parse_args()
+        self.assertFalse(args.prepend_path)
 
 
 class DispatchIntegration(unittest.TestCase):
@@ -169,6 +186,38 @@ class DispatchIntegration(unittest.TestCase):
             self.assertEqual(
                 f.read(), f"TEMPLATE\n{os.path.abspath(weird_path)}\ncontent"
             )
+
+    def test_file_list_without_prepend_path(self):
+        template = os.path.join(self.tmpdir.name, "tmpl.txt")
+        with open(template, "w", encoding="utf-8") as f:
+            f.write("TEMPLATE")
+        file1 = os.path.join(self.tmpdir.name, "input.txt")
+        with open(file1, "w", encoding="utf-8") as f:
+            f.write("content")
+        lst = os.path.join(self.tmpdir.name, "list.txt")
+        with open(lst, "w", encoding="utf-8") as f:
+            f.write(file1 + "\n")
+        outdir = os.path.join(self.tmpdir.name, "out")
+        os.mkdir(outdir)
+
+        self.run_dispatch([
+            template,
+            "--file-list",
+            lst,
+            "-o",
+            outdir,
+            "-j",
+            "1",
+            "-C",
+            self.workdir,
+            "--codex-bin",
+            self.codex,
+            "--no-prepend-path",
+        ])
+
+        out_file = os.path.join(outdir, os.path.relpath(file1) + "-codex")
+        with open(out_file, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), "TEMPLATE\ncontent")
 
     def test_output_collision_file_list(self):
         template = os.path.join(self.tmpdir.name, "tmpl.txt")

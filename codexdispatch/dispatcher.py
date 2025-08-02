@@ -97,11 +97,10 @@ def main() -> None:
                 logging.warning("%sSkipping non-text file %s", prefix, path)
                 return
             prev_output = prev_outputs.get(path)
-            if args.file_list:
+            file_data = data
+            if args.file_list and args.prepend_path:
                 filename_line = os.path.abspath(path)
-                file_data = f"{filename_line}\n{data}"
-            else:
-                file_data = data
+                file_data = f"{filename_line}\n{file_data}"
             prompt = build_prompt(file_data, prev_output)
 
             rel_path, root = rel_and_root(path)
