@@ -34,16 +34,23 @@ For every **param** listed, decide whether an attacker can control it.
 
 ```json
 {
-  "<param-1>": {
-    "user_controlled": "yes" | "no" | "uncertain",
-    "evidence": "<1–2 sentence justification>",
-    "trace": [
-      "<file1.rb>:L10-L18",
-      "<file2.rb>:L42-L47",
-      "... (last inspected step)"
-    ]
-  },
-  "<param-2>": { ... }
+  "<method>": {
+    "<param-1>": {
+      "user_controlled": "yes" | "no" | "uncertain",
+      "evidence": "<1–2 sentence justification>",
+      "trace": [
+        "<file1.rb>:L10-L18",
+        "<file2.rb>:L42-L47"
+      ]
+    },
+    "<param-2>": {
+      "user_controlled": "yes" | "no" | "uncertain",
+      "evidence": "<1–2 sentence justification>",
+      "trace": [
+        "<file3.rb>:L20-L25"
+      ]
+    }
+  }
 }
 ```
 
