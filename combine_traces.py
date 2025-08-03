@@ -13,9 +13,10 @@ Each output file contains::
     - The matching object from ``newfindings.json``
     - Contents of files referenced in its ``trace`` field
 
-Paramtrace trace paths are interpreted relative to a user provided base
-path. New findings trace paths are used as-is. If a file cannot be read
-it is noted in the output.
+Paramtrace and new findings trace paths are used as-is.  Line number
+components (e.g. ``":L1-2"``) are stripped from the paramtrace paths but
+no other path resolution is performed.  If a file cannot be read it is
+noted in the output.
 """
 
 from __future__ import annotations
@@ -50,10 +51,10 @@ def _sanitize_method(method: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", method)
 
 
-def _resolve_paramtrace_path(base: str, trace_entry: str) -> str:
-    """Resolve a trace path from paramtrace data against *base*."""
+def _paramtrace_file_path(trace_entry: str) -> str:
+    """Return normalized file path from a paramtrace trace entry."""
     file_part = trace_entry.split(":", 1)[0]
-    return os.path.normpath(os.path.join(base, file_part))
+    return os.path.normpath(file_part)
 
 
 def _read_file(path: str) -> str:
@@ -67,7 +68,6 @@ def _read_file(path: str) -> str:
 def _write_mapping(
     param_obj: Dict[str, Any],
     finding_obj: Dict[str, Any],
-    base_dir: str,
     out_dir: str,
 ) -> str:
     """Write the combined mapping to *out_dir* and return the file path."""
@@ -79,7 +79,7 @@ def _write_mapping(
         json.dump(param_obj, out, ensure_ascii=False, indent=2)
         out.write("\n\n### Paramtrace Sources\n")
         for rel in param_obj.get("trace", []):
-            abs_path = _resolve_paramtrace_path(base_dir, rel)
+            abs_path = _paramtrace_file_path(rel)
             out.write(f"--- {abs_path}\n")
             out.write(_read_file(abs_path))
             out.write("\n")
@@ -96,7 +96,6 @@ def _write_mapping(
 def combine(
     paramtrace_path: str,
     newfindings_path: str,
-    base_dir: str,
     out_dir: str,
 ) -> List[str]:
     """Combine traces and return list of output files."""
@@ -108,7 +107,7 @@ def combine(
         method = obj.get("method")
         if not method or method not in mapping:
             continue
-        written.append(_write_mapping(obj, mapping[method], base_dir, out_dir))
+        written.append(_write_mapping(obj, mapping[method], out_dir))
     return written
 
 
@@ -127,19 +126,12 @@ def main(argv: Iterable[str] | None = None) -> None:
         help="Path to newfindings.json data",
     )
     parser.add_argument(
-        "--base-dir",
-        required=True,
-        help="Base directory to resolve paramtrace trace paths",
-    )
-    parser.add_argument(
         "--output-dir",
         required=True,
         help="Directory where combined files will be written",
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
-    for path in combine(
-        args.paramtrace, args.newfindings, args.base_dir, args.output_dir
-    ):
+    for path in combine(args.paramtrace, args.newfindings, args.output_dir):
         print(path)
 
 
