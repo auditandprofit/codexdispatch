@@ -3,6 +3,7 @@ import sys
 import subprocess
 import tempfile
 import json
+import re
 
 import unittest
 import unittest.mock
@@ -90,6 +91,38 @@ class TestParseArgs(unittest.TestCase):
         with unittest.mock.patch.object(sys, "argv", argv):
             args = dispatch.parse_args()
         self.assertFalse(args.prepend_path)
+
+    def test_parse_findings_json(self):
+        argv = [
+            "dispatch.py",
+            "tmpl",
+            "--findings-json",
+            "find.json",
+            "-o",
+            "out",
+            "-j",
+            "1",
+            "-C",
+            "wd",
+        ]
+        with unittest.mock.patch.object(sys, "argv", argv):
+            args = dispatch.parse_args()
+        self.assertEqual(args.findings_json, "find.json")
+
+    def test_findings_requires_workdir(self):
+        argv = [
+            "dispatch.py",
+            "tmpl",
+            "--findings-json",
+            "find.json",
+            "-o",
+            "out",
+            "-j",
+            "1",
+        ]
+        with unittest.mock.patch.object(sys, "argv", argv):
+            with self.assertRaises(SystemExit):
+                dispatch.parse_args()
 
 
 class DispatchIntegration(unittest.TestCase):
@@ -254,6 +287,47 @@ class DispatchIntegration(unittest.TestCase):
         out_b = os.path.join(outdir, os.path.relpath(fb) + "-codex")
         self.assertTrue(os.path.exists(out_a))
         self.assertTrue(os.path.exists(out_b))
+
+    def test_gitlab_findings_mode(self):
+        template = os.path.join(self.tmpdir.name, "tmpl.txt")
+        with open(template, "w", encoding="utf-8") as f:
+            f.write("TEMPLATE")
+        src_file = os.path.join(self.tmpdir.name, "src.txt")
+        with open(src_file, "w", encoding="utf-8") as f:
+            f.write("SRC")
+        findings = {
+            "Some::Key": {"finding": {"method": "m"}, "files": ["/orig/src.txt"]}
+        }
+        findings_path = os.path.join(self.tmpdir.name, "findings.json")
+        with open(findings_path, "w", encoding="utf-8") as jf:
+            json.dump(findings, jf)
+        outdir = os.path.join(self.tmpdir.name, "out")
+        os.mkdir(outdir)
+
+        self.run_dispatch([
+            template,
+            "--findings-json",
+            findings_path,
+            "--relative-dir",
+            self.tmpdir.name,
+            "-o",
+            outdir,
+            "-j",
+            "1",
+            "-C",
+            self.workdir,
+            "--codex-bin",
+            self.codex,
+        ])
+
+        slug = re.sub(r"[^A-Za-z0-9._-]+", "_", "Some::Key")[:50]
+        out_file = os.path.join(outdir, slug, "src.txt-codex")
+        with open(out_file, "r", encoding="utf-8") as f:
+            self.assertEqual(
+                f.read(), "TEMPLATE\nSome::Key\n{\n  \"method\": \"m\"\n}\nSRC"
+            )
+        with open(out_file + ".workdir", "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), self.workdir)
 
     def test_multi_pass_tree_dirs(self):
         template = os.path.join(self.tmpdir.name, "tmpl.txt")

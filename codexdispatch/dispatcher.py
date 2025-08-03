@@ -6,6 +6,7 @@ import logging
 import uuid
 import subprocess
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List
 
@@ -14,11 +15,90 @@ from .utils import collect_files, _invoke_codex, find_codex_bin, load_files
 from .security_audit import run_security_audit
 
 
+def _run_findings_mode(args) -> None:
+    with open(args.template, "r", encoding="utf-8") as f:
+        template = f.read()
+    with open(args.findings_json, "r", encoding="utf-8") as jf:
+        findings = json.load(jf)
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    codex_bin = find_codex_bin(args.codex_bin)
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    entries: list[tuple[str, dict, str]] = []
+    all_paths: list[str] = []
+    for key, data in findings.items():
+        finding = data.get("finding", {})
+        for path in data.get("files", []):
+            entries.append((key, finding, path))
+            all_paths.append(path)
+
+    base: str | None = None
+    if args.relative_dir and all_paths:
+        if len(all_paths) == 1:
+            base = os.path.dirname(all_paths[0])
+        else:
+            base = os.path.commonpath(all_paths)
+
+    def worker(item: tuple[str, dict, str]) -> None:
+        key, finding, orig_path = item
+        path = orig_path
+        if args.relative_dir and base:
+            rel = os.path.relpath(orig_path, base)
+            path = os.path.join(args.relative_dir, rel)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                src = f.read()
+        except UnicodeDecodeError:
+            logging.warning("Skipping non-text file %s", path)
+            return
+        except OSError as exc:
+            logging.error("Failed reading %s: %s", path, exc)
+            return
+        finding_json = json.dumps(finding, indent=2)
+        prompt = f"{template}\n{key}\n{finding_json}\n{src}"
+        slug = re.sub(r"[^A-Za-z0-9._-]+", "_", key)[:50]
+        rel_out = (
+            os.path.relpath(path, args.relative_dir)
+            if args.relative_dir
+            else os.path.relpath(path)
+        )
+        out_path = os.path.join(args.output_dir, slug, f"{rel_out}-codex")
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        cmd = [
+            codex_bin,
+            "exec",
+            "--output-last-message",
+            out_path,
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--skip-git-repo-check",
+            "-C",
+            args.work_dir,
+        ]
+        logging.info("FindingsMode: %s -> %s", path, out_path)
+        try:
+            _invoke_codex(cmd, prompt, args.timeout, path)
+        except subprocess.TimeoutExpired as te:
+            logging.error("TIMEOUT after %ss on %s", te.timeout, path)
+        except subprocess.CalledProcessError as cpe:
+            stderr = (cpe.stderr or b"").decode(errors="ignore")
+            logging.error("Codex exit %s on %s\n%s", cpe.returncode, path, stderr)
+        except Exception as exc:
+            logging.error("Failed processing %s: %s", path, exc)
+
+    with ThreadPoolExecutor(max_workers=args.workers) as ex:
+        list(ex.map(worker, entries))
+
+
 def main() -> None:
     args = parse_args()
 
     if args.security_audit:
         run_security_audit(args)
+        return
+    if getattr(args, "findings_json", None):
+        _run_findings_mode(args)
         return
 
     template_path = args.template

@@ -75,6 +75,11 @@ def parse_args() -> argparse.Namespace:
         dest="file_list",
         help="text file containing absolute/relative paths, one per line",
     )
+    group.add_argument(
+        "--findings-json",
+        dest="findings_json",
+        help="GitLab findings.json input file",
+    )
     parser.add_argument(
         "--prepend-path",
         dest="prepend_path",
@@ -104,7 +109,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-C",
         "--work-dir",
-        default=os.getcwd(),
+        dest="work_dir",
+        default=None,
         help="working directory to run Codex in (default: current directory)",
     )
     parser.add_argument(
@@ -131,6 +137,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="mapping filename for multi-pass mode",
     )
+    parser.add_argument(
+        "--relative-dir",
+        dest="relative_dir",
+        default=None,
+        help="base directory to resolve findings file paths",
+    )
     args = parser.parse_args()
     if args.mock_audit and not args.security_audit:
         parser.error("--mock-audit requires --security-audit")
@@ -141,4 +153,8 @@ def parse_args() -> argparse.Namespace:
             parser.error("--depth must be >= 1")
         if args.passes != 1:
             parser.error("--passes is not supported with --security-audit")
+    if args.findings_json and not args.work_dir:
+        parser.error("--work-dir is required with --findings-json")
+    if args.work_dir is None:
+        args.work_dir = os.getcwd()
     return args
