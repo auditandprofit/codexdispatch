@@ -1,0 +1,8 @@
+```json
+{
+  "uri": {
+    "user_controlled": "no",
+    "evidence": "The uri argument is taken from internal Redis configuration (e.g. config/redis.yml or instance-specific YAML), which is loaded at startup and not influenced by external user input."
+  }
+}
+```

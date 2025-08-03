@@ -1,0 +1,16 @@
+```json
+{
+  "host/hosts": {
+    "user_controlled": "no",
+    "evidence": "Net::LDAP.open is passed adapter_options from Gitlab::Auth::Ldap::Config, which reads host settings from static application configuration rather than request or user input."
+  },
+  "encryption[:tls_options][:ca_file]": {
+    "user_controlled": "no",
+    "evidence": "The tls_options hash (including ca_file) is sourced from GitLab’s LDAP configuration (YAML or DB) via Gitlab::Auth::Ldap::Config, not influenced by end-user parameters."
+  },
+  "encryption[:tls_options][:cert]": {
+    "user_controlled": "no",
+    "evidence": "The cert path in tls_options comes from application configuration loaded by Gitlab::Auth::Ldap::Config, so it cannot be set by an external user."
+  }
+}
+```

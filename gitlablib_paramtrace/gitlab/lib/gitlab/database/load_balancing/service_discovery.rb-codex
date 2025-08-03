@@ -1,0 +1,16 @@
+```json
+{
+  "config[:config_file] → parse_config_file → IO.foreach": {
+    "user_controlled": "no",
+    "evidence": "The config_file path is supplied by application code or defaults and cannot be set via user requests at runtime."
+  },
+  "ENV['RES_OPTIONS'] → parse_environment_variables → eval": {
+    "user_controlled": "no",
+    "evidence": "Environment variables are defined at process launch and are not influenced by end-user inputs."
+  },
+  "config[:nameservers] → nameservers= → nameservers_from_name → Resolver.search → network calls": {
+    "user_controlled": "no",
+    "evidence": "The nameservers array comes from DNS lookups for a statically configured record, not from user-provided data."
+  }
+}
+```

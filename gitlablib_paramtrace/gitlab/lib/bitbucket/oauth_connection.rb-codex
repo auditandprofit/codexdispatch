@@ -1,0 +1,12 @@
+```json
+{
+  "options[:extract_access_token] -> parse_response_legacy -> build_access_token_legacy -> extract_access_token.call": {
+    "user_controlled": "no",
+    "evidence": "extract_access_token is pulled from OmniAuth::Strategies::Bitbucket.default_options[:client_options], which is statically configured in application code and not influenced by external input."
+  },
+  "options[:site] -> Faraday.new(site) -> connection.run_request": {
+    "user_controlled": "no",
+    "evidence": "site is sourced from the default OmniAuth Bitbucket client_options in code (Bitbucket API endpoint), not from user-supplied parameters."
+  }
+}
+```

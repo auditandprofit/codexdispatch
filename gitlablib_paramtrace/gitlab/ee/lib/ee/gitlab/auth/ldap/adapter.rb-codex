@@ -1,0 +1,8 @@
+```json
+{
+  "ldap_filter_string": {
+    "user_controlled": "uncertain",
+    "evidence": "Net::LDAP::Filter.construct is only invoked in filter_search, which is called with values from internal configuration or safe builder methods (eq, join) and there is no evidence of direct attacker-supplied input for the filter string."
+  }
+}
+```

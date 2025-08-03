@@ -1,0 +1,8 @@
+```json
+{
+  "value -> Faraday.new(site) -> connection.run_request": {
+    "user_controlled": "no",
+    "evidence": "The site parameter is set from Gitlab::Geo.primary_node_url, a static configuration value not influenced by user input."
+  }
+}
+```

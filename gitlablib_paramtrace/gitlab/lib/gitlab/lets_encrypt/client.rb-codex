@@ -1,0 +1,8 @@
+```json
+{
+  "directory": {
+    "user_controlled": "no",
+    "evidence": "The directory parameter is derived from a fixed constant (PRODUCTION_DIRECTORY_URL or STAGING_DIRECTORY_URL) based on the environment, with no user input influencing it."
+  }
+}
+```

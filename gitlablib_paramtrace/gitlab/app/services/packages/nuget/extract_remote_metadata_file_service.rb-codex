@@ -1,0 +1,12 @@
+```json
+{
+  "context": {
+    "user_controlled": "yes",
+    "evidence": "The context argument is a StringIO wrapping HTTP.get(remote_url) response fragments; remote_url and its fetched content are attacker-controllable."
+  },
+  "decrypter": {
+    "user_controlled": "no",
+    "evidence": "No decrypter parameter is passed to Zip::InputStream.open in this code path; it defaults to nil and cannot be influenced by an attacker."
+  }
+}
+```

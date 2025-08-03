@@ -1,0 +1,36 @@
+```json
+{
+  "path": {
+    "user_controlled": "no",
+    "evidence": "The URI is built from GitLab.config.webpack settings and the internal `path` argument passed by application code, not from external user input."
+  },
+  "http_proxyaddr": {
+    "user_controlled": "no",
+    "evidence": "No `http_proxyaddr` option is passed to HTTParty.get, so it uses default/static proxy settings not influenced by user input."
+  },
+  "ssl_ca_file": {
+    "user_controlled": "no",
+    "evidence": "The call only sets `verify: false` and does not accept `ssl_ca_file`, so CA file configuration remains internal."
+  },
+  "ssl_ca_path": {
+    "user_controlled": "no",
+    "evidence": "No `ssl_ca_path` option is provided, so the default internal certificate path is used."
+  },
+  "query_string_normalizer": {
+    "user_controlled": "no",
+    "evidence": "The default query normalizer is used and no custom `query_string_normalizer` proc is passed."
+  },
+  "parser": {
+    "user_controlled": "no",
+    "evidence": "HTTParty.get is invoked without a `parser` option, so it uses the built-in parser, not user-supplied code."
+  },
+  "connection_adapter": {
+    "user_controlled": "no",
+    "evidence": "No `connection_adapter` is specified in the call, so the default Net::HTTP adapter is used."
+  },
+  "format": {
+    "user_controlled": "no",
+    "evidence": "The `format` parameter is not provided and thus defaults internally; users cannot override it via this call."
+  }
+}
+```

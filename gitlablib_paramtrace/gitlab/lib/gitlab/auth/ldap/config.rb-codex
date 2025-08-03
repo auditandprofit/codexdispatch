@@ -1,0 +1,12 @@
+```json
+{
+  "attribute": {
+    "user_controlled": "no",
+    "evidence": "The attribute argument comes from the LDAP config's uid setting, which is predefined in application config and not influenced by user input."
+  },
+  "value": {
+    "user_controlled": "yes",
+    "evidence": "The value '%{username}' is interpolated with the end user–supplied username at runtime, allowing an attacker to control the filter value."
+  }
+}
+```

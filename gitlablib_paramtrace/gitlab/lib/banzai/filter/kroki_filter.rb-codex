@@ -1,0 +1,24 @@
+```json
+{
+  "server_url": {
+    "user_controlled": "no",
+    "evidence": "The server_url is pulled from application settings (settings.kroki_url), which is controlled by administrators, not end users."
+  },
+  "type": {
+    "user_controlled": "yes",
+    "evidence": "The diagram type is read from the code block’s data-canonical-lang attribute, which users author in their content."
+  },
+  "format": {
+    "user_controlled": "no",
+    "evidence": "The format is hard-coded to 'svg' in the filter and cannot be changed by user input."
+  },
+  "text": {
+    "user_controlled": "yes",
+    "evidence": "The text parameter is the raw content of the code block, entirely supplied by users."
+  },
+  "opts": {
+    "user_controlled": "no",
+    "evidence": "No opts are passed into get_diagram_uri in this integration (it uses the default), so users have no influence over it."
+  }
+}
+```

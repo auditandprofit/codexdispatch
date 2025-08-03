@@ -1,0 +1,12 @@
+```json
+{
+  "options[:extract_access_token] -> parse_response_legacy -> build_access_token_legacy -> extract_access_token.call": {
+    "user_controlled": "no",
+    "evidence": "The extract_access_token proc is taken from OmniAuth::Strategies::Bitbucket.default_options[:client_options], a static configuration not influenced by request parameters."
+  },
+  "options[:site] -> Faraday.new(site) -> connection.run_request": {
+    "user_controlled": "no",
+    "evidence": "The site value is sourced from the OmniAuth Bitbucket strategy’s default client_options and cannot be overridden by user input."
+  }
+}
+```

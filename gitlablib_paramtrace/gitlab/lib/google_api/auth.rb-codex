@@ -1,0 +1,8 @@
+```json
+{
+  "value -> Faraday.new(site) -> connection.run_request": {
+    "user_controlled": "no",
+    "evidence": "In GoogleApi::Auth#client the site parameter is a hardcoded literal ('https://accounts.google.com') and cannot be influenced by external input."
+  }
+}
+```

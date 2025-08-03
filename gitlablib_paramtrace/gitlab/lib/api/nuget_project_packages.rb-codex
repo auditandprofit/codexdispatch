@@ -1,0 +1,12 @@
+```json
+{
+  "context": {
+    "user_controlled": "no",
+    "evidence": "params[:package] is a WorkhorseFile object created by the server for the uploaded file, not a raw user-supplied path or IO"
+  },
+  "decrypter": {
+    "user_controlled": "no",
+    "evidence": "no decrypter argument is ever passed to Zip::InputStream.open in this code path, it always uses the default nil value"
+  }
+}
+```

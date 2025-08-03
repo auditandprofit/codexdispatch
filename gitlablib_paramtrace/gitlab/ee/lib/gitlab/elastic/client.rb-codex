@@ -1,0 +1,20 @@
+```json
+{
+  "before_refresh -> invoked in RefreshingCredentials#initialize and #refresh (arbitrary code execution)": {
+    "user_controlled": "no",
+    "evidence": "GitLab does not expose any API or configuration to set a before_refresh proc when constructing Aws::AssumeRoleCredentials; it is only used internally with a fixed client."
+  },
+  "client -> used in RefreshingCredentials#refresh via @client.assume_role (arbitrary method execution)": {
+    "user_controlled": "no",
+    "evidence": "The STS client instance is created inside GitLab code with a fixed region and cannot be supplied or replaced by an end user."
+  },
+  "endpoint -> passed to STS::Client.new and used in HTTP call in #refresh (SSRF)": {
+    "user_controlled": "no",
+    "evidence": "GitLab only passes the AWS region from application settings to Aws::STS::Client.new; there is no configuration for a custom endpoint."
+  },
+  "http_proxy -> passed to STS::Client.new and used in HTTP call in #refresh (SSRF)": {
+    "user_controlled": "no",
+    "evidence": "The http_proxy option is not exposed in the elasticsearch_config or any user‐facing settings, so it cannot be influenced by an attacker."
+  }
+}
+```

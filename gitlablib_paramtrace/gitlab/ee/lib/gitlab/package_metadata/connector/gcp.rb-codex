@@ -1,0 +1,8 @@
+```json
+{
+  "endpoint": {
+    "user_controlled": "no",
+    "evidence": "Google::Cloud::Storage.anonymous is called without passing a host or endpoint parameter, so it uses the library’s built-in default endpoint rather than any user-supplied value."
+  }
+}
+```

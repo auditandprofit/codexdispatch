@@ -1,0 +1,44 @@
+```json
+{
+  "credential_source[:url]": {
+    "user_controlled": "no",
+    "evidence": "make_creds reads JSON from BaseClient#credentials via GitLab::Json.dump, which is loaded from server configuration rather than user-supplied input."
+  },
+  "credential_source[:file]": {
+    "user_controlled": "no",
+    "evidence": "the credentials JSON originates from application configuration (BaseClient#credentials), not from external user parameters."
+  },
+  "credential_source[:executable][:command]": {
+    "user_controlled": "no",
+    "evidence": "external_credentials passes a static credentials object from server config into make_creds, not influenced by request or user data."
+  },
+  "credential_source[:executable][:output_file]": {
+    "user_controlled": "no",
+    "evidence": "the JSON for make_creds is generated from BaseClient#credentials stored in application settings, not from user input."
+  },
+  "credential_source[:region_url]": {
+    "user_controlled": "no",
+    "evidence": "make_creds receives credentials from GitLab configuration (BaseClient#credentials), not from any HTTP or user-controllable source."
+  },
+  "credential_source[:regional_cred_verification_url]": {
+    "user_controlled": "no",
+    "evidence": "the JSON key io passed into make_creds is built from server-side credentials, not exposed to user manipulation."
+  },
+  "credential_source[:imdsv2_session_token_url]": {
+    "user_controlled": "no",
+    "evidence": "credentials come from application settings via BaseClient#credentials and are not derived from user input."
+  },
+  "token_url": {
+    "user_controlled": "no",
+    "evidence": "make_creds is invoked with JSON dumped from a credentials object loaded from server configuration, not from untrusted input."
+  },
+  "service_account_impersonation_url": {
+    "user_controlled": "no",
+    "evidence": "the credentials JSON is sourced from BaseClient#credentials in application config, not from user-controlled data."
+  },
+  "subject_token_type": {
+    "user_controlled": "no",
+    "evidence": "subject_token_type is read from the credentials JSON coming from server configuration, which is not influenced by external users."
+  }
+}
+```

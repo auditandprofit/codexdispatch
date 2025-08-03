@@ -1,0 +1,28 @@
+```json
+{
+  "input -> load -> Document.parse -> include:: processor -> File.open/OpenURI.open_uri": {
+    "user_controlled": "yes",
+    "evidence": "The `input` argument is taken directly from `@text` in the pipeline, which comes from user-supplied AsciiDoc content allowing attackers to craft include directives."
+  },
+  "options[:to_file] -> convert logic -> doc.normalize_system_path -> doc.write": {
+    "user_controlled": "no",
+    "evidence": "The filter never sets a `to_file` option in `asciidoc_opts`, so users cannot influence file writing via `to_file`."
+  },
+  "options[:to_dir] -> convert logic -> doc.normalize_system_path & Helpers.mkdir_p -> doc.write": {
+    "user_controlled": "no",
+    "evidence": "The `to_dir` option is not provided by the filter, preventing user control over output directory creation."
+  },
+  "options[:mkdirs] -> convert logic -> Helpers.mkdir_p": {
+    "user_controlled": "no",
+    "evidence": "The `mkdirs` option is omitted in `asciidoc_opts`, so document conversion cannot create directories based on user input."
+  },
+  "options[:attributes]['templatesdir'] -> TemplateConverter.scan -> Tilt::Template.load -> template.render (ERB)": {
+    "user_controlled": "uncertain",
+    "evidence": "The `templatesdir` attribute is not locked down in `asciidoc_opts` and could be overridden via document attributes, but Asciidoctor attribute precedence is unclear."
+  },
+  "options[:attributes]['stylesheet']/['copycss']/['stylesdir'] -> convert logic -> doc.normalize_system_path -> doc.read_asset & File.write": {
+    "user_controlled": "uncertain",
+    "evidence": "Attributes for `stylesheet`, `copycss`, and `stylesdir` are neither set nor restricted in the filter, so document attributes may influence asset loading and writing."
+  }
+}
+```

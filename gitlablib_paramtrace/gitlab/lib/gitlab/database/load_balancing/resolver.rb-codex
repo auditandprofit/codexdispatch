@@ -1,0 +1,12 @@
+```json
+{
+  "name": {
+    "user_controlled": "no",
+    "evidence": "The @nameserver value passed to Net::DNS::Resolver.start comes from application configuration for database load balancing, not from end-user input."
+  },
+  "type": {
+    "user_controlled": "no",
+    "evidence": "The DNS record type is hardcoded to Net::DNS::A in the code and cannot be influenced by external or user data."
+  }
+}
+```

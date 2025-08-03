@@ -1,0 +1,12 @@
+```json
+{
+  "attribute": {
+    "user_controlled": "no",
+    "evidence": "AD_USER_DISABLED is defined with a hard-coded attribute literal (\"userAccountControl:1.2.840.113556.1.4.803\"), not derived from user input."
+  },
+  "value": {
+    "user_controlled": "no",
+    "evidence": "AD_USER_DISABLED uses a fixed literal value (\"2\"), not influenced by user input."
+  }
+}
+```
