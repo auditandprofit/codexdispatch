@@ -57,7 +57,8 @@ def _run_findings_mode(args) -> None:
             logging.error("Failed reading %s: %s", path, exc)
             return
         finding_json = json.dumps(finding, indent=2)
-        prompt = f"{template}\n{key}\n{finding_json}\n{src}"
+        full_path = os.path.abspath(path)
+        prompt = f"{template}\n{finding_json}\n{full_path}\n{src}"
         slug = re.sub(r"[^A-Za-z0-9._-]+", "_", key)[:50]
         rel_out = (
             os.path.relpath(path, args.relative_dir)

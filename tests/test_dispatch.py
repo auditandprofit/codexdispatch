@@ -324,7 +324,8 @@ class DispatchIntegration(unittest.TestCase):
         out_file = os.path.join(outdir, slug, "src.txt-codex")
         with open(out_file, "r", encoding="utf-8") as f:
             self.assertEqual(
-                f.read(), "TEMPLATE\nSome::Key\n{\n  \"method\": \"m\"\n}\nSRC"
+                f.read(),
+                f"TEMPLATE\n{{\n  \"method\": \"m\"\n}}\n{os.path.abspath(src_file)}\nSRC",
             )
         with open(out_file + ".workdir", "r", encoding="utf-8") as f:
             self.assertEqual(f.read(), self.workdir)
