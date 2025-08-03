@@ -15,6 +15,25 @@ from .utils import collect_files, _invoke_codex, find_codex_bin, load_files
 from .security_audit import run_security_audit
 
 
+def _find_gitlab_findings(start: str) -> Optional[str]:
+    """Return path to ``gitlab_findings.json`` searching upwards.
+
+    Starting at ``start`` this walks up the directory tree until a
+    ``gitlab_findings.json`` file is found.  If none is discovered the
+    function returns ``None``.
+    """
+
+    cur = os.path.abspath(start)
+    while True:
+        cand = os.path.join(cur, "gitlab_findings.json")
+        if os.path.exists(cand):
+            return cand
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return None
+        cur = parent
+
+
 def _run_paramtrace_scan(path: str) -> None:
     """Scan Codex paramtrace outputs and resolve associated findings.
 
@@ -37,9 +56,9 @@ def _run_paramtrace_scan(path: str) -> None:
             slug = re.sub(r"[^A-Za-z0-9._-]+", "_", key)[:50]
             finding_lookup[slug] = data
 
-    gitlab_findings_path = os.path.join(path, "gitlab_findings.json")
+    gitlab_findings_path = _find_gitlab_findings(path)
     gl_lookup: dict[str, str] = {}
-    if os.path.exists(gitlab_findings_path):
+    if gitlab_findings_path:
         try:
             with open(gitlab_findings_path, "r", encoding="utf-8") as fh:
                 gitlab = json.load(fh)
