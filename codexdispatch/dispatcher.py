@@ -16,7 +16,27 @@ from .security_audit import run_security_audit
 
 
 def _run_paramtrace_scan(path: str) -> None:
+    """Scan Codex paramtrace outputs and resolve associated findings.
+
+    If a ``findings.json`` file is present under ``path``, each Codex output
+    file is matched against the ``files`` entries from the findings document.
+    When a match is found, the finding object is attached to the result.
+    """
+
     matches: list[dict[str, str]] = []
+
+    findings_path = os.path.join(path, "findings.json")
+    finding_lookup: dict[str, dict] = {}
+    if os.path.exists(findings_path):
+        try:
+            with open(findings_path, "r", encoding="utf-8") as fh:
+                findings = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            findings = {}
+        for key, data in findings.items():
+            slug = re.sub(r"[^A-Za-z0-9._-]+", "_", key)[:50]
+            finding_lookup[slug] = data
+
     for dirpath, _, filenames in os.walk(path):
         for name in filenames:
             fpath = os.path.join(dirpath, name)
@@ -36,16 +56,35 @@ def _run_paramtrace_scan(path: str) -> None:
                 data = json.loads(text)
             except json.JSONDecodeError:
                 continue
+
+            rel_fpath = os.path.relpath(fpath, path)
+            parts = rel_fpath.split(os.sep)
+            slug = parts[0] if parts else ""
+            finding_obj = None
+            candidate = finding_lookup.get(slug)
+            if candidate:
+                # Derive original file path from codex output name.
+                source_path = os.path.join(*parts[1:]) if len(parts) > 1 else ""
+                if source_path.endswith("-codex"):
+                    source_path = source_path[: -len("-codex")]
+                for f in candidate.get("files", []):
+                    norm_candidate = os.path.normpath(f)
+                    if norm_candidate.endswith(os.path.normpath(source_path)):
+                        finding_obj = candidate.get("finding")
+                        break
+
             for chain, info in data.items():
                 if isinstance(info, dict) and info.get("user_controlled") == "yes":
-                    matches.append(
-                        {
-                            "file": fpath,
-                            "param": chain,
-                            "trace": info.get("trace", ""),
-                            "evidence": info.get("evidence", ""),
-                        }
-                    )
+                    result = {
+                        "file": fpath,
+                        "param": chain,
+                        "trace": info.get("trace", ""),
+                        "evidence": info.get("evidence", ""),
+                    }
+                    if finding_obj:
+                        result["finding"] = finding_obj
+                    matches.append(result)
+
     print(json.dumps(matches, indent=2))
 
 
