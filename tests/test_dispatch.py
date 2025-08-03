@@ -102,14 +102,13 @@ class TestParseArgs(unittest.TestCase):
             "out",
             "-j",
             "1",
-            "-C",
-            "wd",
         ]
         with unittest.mock.patch.object(sys, "argv", argv):
             args = dispatch.parse_args()
         self.assertEqual(args.findings_json, "find.json")
+        self.assertIsNone(args.work_dir)
 
-    def test_findings_requires_workdir(self):
+    def test_findings_rejects_workdir(self):
         argv = [
             "dispatch.py",
             "tmpl",
@@ -119,6 +118,8 @@ class TestParseArgs(unittest.TestCase):
             "out",
             "-j",
             "1",
+            "-C",
+            "wd",
         ]
         with unittest.mock.patch.object(sys, "argv", argv):
             with self.assertRaises(SystemExit):
@@ -314,8 +315,6 @@ class DispatchIntegration(unittest.TestCase):
             outdir,
             "-j",
             "1",
-            "-C",
-            self.workdir,
             "--codex-bin",
             self.codex,
         ])
@@ -328,7 +327,7 @@ class DispatchIntegration(unittest.TestCase):
                 f"TEMPLATE\n{{\n  \"method\": \"m\"\n}}\n{os.path.abspath(src_file)}\nSRC",
             )
         with open(out_file + ".workdir", "r", encoding="utf-8") as f:
-            self.assertEqual(f.read(), self.workdir)
+            self.assertEqual(f.read(), os.path.dirname(src_file))
 
     def test_multi_pass_tree_dirs(self):
         template = os.path.join(self.tmpdir.name, "tmpl.txt")

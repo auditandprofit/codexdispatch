@@ -169,8 +169,10 @@ def parse_args() -> argparse.Namespace:
             parser.error("--depth must be >= 1")
         if args.passes != 1:
             parser.error("--passes is not supported with --security-audit")
-    if args.findings_json and not args.work_dir:
-        parser.error("--work-dir is required with --findings-json")
-    if args.work_dir is None:
-        args.work_dir = os.getcwd()
+    if args.findings_json:
+        if args.work_dir:
+            parser.error("--work-dir is not allowed with --findings-json")
+    else:
+        if args.work_dir is None:
+            args.work_dir = os.getcwd()
     return args
