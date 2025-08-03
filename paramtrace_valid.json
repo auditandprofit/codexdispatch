@@ -1,0 +1,116 @@
+[
+  {
+    "file": "gitlablib_paramtrace/gitlab/app/services/packages/nuget/extract_remote_metadata_file_service.rb-codex",
+    "param": "context",
+    "trace": [
+      "extract_remote_metadata_file_service.rb:L52-60",
+      "extract_remote_metadata_file_service.rb:L43-48",
+      "extract_remote_metadata_file_service.rb:L37-44",
+      "extract_remote_metadata_file_service.rb:L32-33",
+      "extract_remote_metadata_file_service.rb:L14-16"
+    ],
+    "evidence": "The first argument to Zip::InputStream.open is `io`, a StringIO wrapping `fragments` obtained from Gitlab::HTTP.get(remote_url); since `remote_url` comes from the service initializer (user input), an attacker controls the zip stream contents.",
+    "method": "Zip::InputStream.open"
+  },
+  {
+    "file": "gitlablib_paramtrace/gitlab/ee/app/validators/ldap_filter_validator.rb-codex",
+    "param": "ldap_filter_string -> StringScanner.new -> FilterParser.parse -> parse/parse_paren_expression",
+    "trace": [
+      "ldap_filter_validator.rb:L8-L11",
+      "ldap_filter_validator.rb:L14-L17"
+    ],
+    "evidence": "This ActiveModel validator is applied to the model\u2019s filter attribute (see example usage), which is user\u2011supplied via ActiveRecord, so the value passed to FilterParser.parse can be attacker\u2011controlled.",
+    "method": "Net::LDAP::Filter::FilterParser.parse"
+  },
+  {
+    "file": "gitlablib_paramtrace/gitlab/ee/lib/gitlab/package_metadata/connector/gcp.rb-codex",
+    "param": "endpoint",
+    "trace": [
+      "base_connector.rb:L7-14",
+      "gcp.rb:L67-73"
+    ],
+    "evidence": "sync_config.base_uri comes from the externally configured SyncConfiguration and is passed straight through as the host into Google::Cloud::Storage.anonymous (Service.new), enabling SSRF.",
+    "method": "Google::Cloud::Storage.anonymous"
+  },
+  {
+    "file": "gitlablib_paramtrace/gitlab/ee/lib/ee/gitlab/auth/ldap/adapter.rb-codex",
+    "param": "value",
+    "trace": [
+      "ee/lib/gitlab/auth/smartcard/ldap_certificate.rb:L9-13",
+      "ee/lib/gitlab/auth/smartcard/ldap_certificate.rb:L67-72",
+      "ee/lib/ee/gitlab/auth/ldap/person.rb:L25-28",
+      "ee/lib/ee/gitlab/auth/ldap/adapter.rb:L79-80"
+    ],
+    "evidence": "The filter value is built from the client\u2011presented X.509 certificate\u2019s serial and issuer (certificate_assertion), which an attacker can supply via the TLS client\u2011certificate authentication flow.",
+    "method": "Net::LDAP::Filter.ex"
+  },
+  {
+    "file": "gitlablib_paramtrace/gitlab/lib/gitlab/auth/ldap/config.rb-codex",
+    "param": "value",
+    "trace": [
+      "lib/gitlab/auth/ldap/config.rb:L335-342"
+    ],
+    "evidence": "The `'%{username}'` literal is a placeholder that OmniAuth replaces with the user-supplied login username without escaping, enabling injection.",
+    "method": "Net::LDAP::Filter.eq"
+  },
+  {
+    "file": "gitlablib_paramtrace/gitlab/lib/gitlab/legacy_github_import/client.rb-codex",
+    "param": "opts[:params]",
+    "trace": [
+      "app/controllers/concerns/import/github_oauth.rb:L68-L69",
+      "lib/gitlab/legacy_github_import/client.rb:L60-L62"
+    ],
+    "evidence": "The authorization code passed to auth_code.get_token comes directly from params[:code] supplied by the user in the callback URL.",
+    "method": "OAuth2::Client#request"
+  },
+  {
+    "file": "gitlablib_paramtrace/gitlab/lib/banzai/filter/asciidoc_filter.rb-codex",
+    "param": "input -> load -> Document.parse -> include:: processor -> File.open/OpenURI.open_uri",
+    "trace": [
+      "asciidoc_filter.rb:L43-L45",
+      "asciidoc_filter.rb:L94-L95"
+    ],
+    "evidence": "The `input` argument to Asciidoctor.convert comes directly from the filter\u2019s `@text`, which is the user-supplied content fed into the HTML::Pipeline.",
+    "method": "Asciidoctor.convert"
+  },
+  {
+    "file": "gitlablib_paramtrace/gitlab/lib/banzai/filter/asciidoc_filter.rb-codex",
+    "param": "options[:attributes]['templatesdir'] -> TemplateConverter.scan -> Tilt::Template.load -> template.render (ERB)",
+    "trace": [
+      "asciidoc_filter.rb:L22-L41",
+      "asciidoc_filter.rb:L79-L90"
+    ],
+    "evidence": "DEFAULT_ADOC_ATTRS does not define a `templatesdir`, and Asciidoctor.convert merges document header attributes into options[:attributes], so a user-supplied `templatesdir` attribute in the AsciiDoc will be honored.",
+    "method": "Asciidoctor.convert"
+  },
+  {
+    "file": "gitlablib_paramtrace/gitlab/lib/banzai/filter/asciidoc_filter.rb-codex",
+    "param": "options[:attributes]['stylesheet']/['copycss']/['stylesdir'] -> convert logic -> doc.normalize_system_path -> doc.read_asset & File.write",
+    "trace": [
+      "asciidoc_filter.rb:L22-L41",
+      "asciidoc_filter.rb:L79-L90"
+    ],
+    "evidence": "DEFAULT_ADOC_ATTRS does not include `stylesheet`, `copycss`, or `stylesdir`, and document header attributes are merged into options[:attributes], so user-specified values for these attributes will be passed through.",
+    "method": "Asciidoctor.convert"
+  },
+  {
+    "file": "gitlablib_paramtrace/gitlab/lib/banzai/filter/kroki_filter.rb-codex",
+    "param": "text",
+    "trace": [
+      "lib/banzai/filter/kroki_filter.rb:L35-36",
+      "lib/banzai/filter/kroki_filter.rb:L58-60"
+    ],
+    "evidence": "diagram_src is set to node.content, which is the raw code block text supplied by the user.",
+    "method": "AsciidoctorExtensions::KrokiDiagram#get_diagram_uri"
+  },
+  {
+    "file": "gitlablib_paramtrace/gitlab/lib/api/nuget_project_packages.rb-codex",
+    "param": "context",
+    "trace": [
+      "lib/api/nuget_project_packages.rb:L137-L139",
+      "lib/api/nuget_project_packages.rb:L36-L39"
+    ],
+    "evidence": "`params[:package]` is declared via `params :file_params` as a WorkhorseFile (the multipart file upload), so it is directly user-supplied.",
+    "method": "Zip::InputStream.open"
+  }
+]
