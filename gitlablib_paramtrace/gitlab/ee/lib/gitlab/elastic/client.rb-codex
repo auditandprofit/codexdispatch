@@ -1,20 +1,34 @@
 ```json
 {
-  "before_refresh -> invoked in RefreshingCredentials#initialize and #refresh (arbitrary code execution)": {
+  "before_refresh": {
     "user_controlled": "no",
-    "evidence": "GitLab does not expose any API or configuration to set a before_refresh proc when constructing Aws::AssumeRoleCredentials; it is only used internally with a fixed client."
+    "evidence": "AssumeRoleCredentials.new is called without a before_refresh argument; no external input can set it.",
+    "trace": [
+      "ee/lib/gitlab/elastic/client.rb:L59-L63"
+    ]
   },
-  "client -> used in RefreshingCredentials#refresh via @client.assume_role (arbitrary method execution)": {
+  "client": {
     "user_controlled": "no",
-    "evidence": "The STS client instance is created inside GitLab code with a fixed region and cannot be supplied or replaced by an end user."
+    "evidence": "The client is a locally constructed Aws::STS::Client using only the configured region; it’s not derived from untrusted input.",
+    "trace": [
+      "ee/lib/gitlab/elastic/client.rb:L57-L58",
+      "ee/lib/gitlab/elastic/client.rb:L59-L63"
+    ]
   },
-  "endpoint -> passed to STS::Client.new and used in HTTP call in #refresh (SSRF)": {
+  "endpoint": {
     "user_controlled": "no",
-    "evidence": "GitLab only passes the AWS region from application settings to Aws::STS::Client.new; there is no configuration for a custom endpoint."
+    "evidence": "Aws::STS::Client.new is invoked with only a region; no endpoint option is passed from external input.",
+    "trace": [
+      "ee/lib/gitlab/elastic/client.rb:L57-L58",
+      "ee/lib/gitlab/elastic/client.rb:L59-L63"
+    ]
   },
-  "http_proxy -> passed to STS::Client.new and used in HTTP call in #refresh (SSRF)": {
+  "http_proxy": {
     "user_controlled": "no",
-    "evidence": "The http_proxy option is not exposed in the elasticsearch_config or any user‐facing settings, so it cannot be influenced by an attacker."
+    "evidence": "The code never supplies an http_proxy option to the STS client; defaults are used and not influenced by user input.",
+    "trace": [
+      "ee/lib/gitlab/elastic/client.rb:L57-L63"
+    ]
   }
 }
 ```

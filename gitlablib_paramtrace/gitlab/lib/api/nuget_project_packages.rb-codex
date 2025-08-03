@@ -2,11 +2,18 @@
 {
   "context": {
     "user_controlled": "no",
-    "evidence": "params[:package] is a WorkhorseFile object created by the server for the uploaded file, not a raw user-supplied path or IO"
+    "evidence": "params[:package] is a WorkhorseFile provided by GitLab Workhorse, so the server controls the file path and only the file contents come from the user.",
+    "trace": [
+      "lib/api/nuget_project_packages.rb:L25-L29",
+      "lib/api/nuget_project_packages.rb:L136-L140"
+    ]
   },
   "decrypter": {
     "user_controlled": "no",
-    "evidence": "no decrypter argument is ever passed to Zip::InputStream.open in this code path, it always uses the default nil value"
+    "evidence": "The code calls Zip::InputStream.open with a single argument and never passes a decrypter object, so there is no user-supplied decrypter in this execution path.",
+    "trace": [
+      "lib/api/nuget_project_packages.rb:L136-L140"
+    ]
   }
 }
 ```

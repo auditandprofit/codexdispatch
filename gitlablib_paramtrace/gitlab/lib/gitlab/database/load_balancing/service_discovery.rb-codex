@@ -1,16 +1,25 @@
 ```json
 {
-  "config[:config_file] → parse_config_file → IO.foreach": {
+  "config[:config_file]": {
     "user_controlled": "no",
-    "evidence": "The config_file path is supplied by application code or defaults and cannot be set via user requests at runtime."
+    "evidence": "ServiceDiscovery calls Net::DNS::Resolver.new without specifying a config_file option, so it uses the default system resolv.conf which isn’t influenced by external users.",
+    "trace": [
+      "lib/gitlab/database/load_balancing/service_discovery.rb:L151-L155"
+    ]
   },
-  "ENV['RES_OPTIONS'] → parse_environment_variables → eval": {
+  "ENV['RES_OPTIONS']": {
     "user_controlled": "no",
-    "evidence": "Environment variables are defined at process launch and are not influenced by end-user inputs."
+    "evidence": "Resolver.initialize reads ENV['RES_OPTIONS'] from the process environment at startup, which is controlled by the system, not by remote attackers.",
+    "trace": [
+      "lib/gitlab/database/load_balancing/service_discovery.rb:L151-L155"
+    ]
   },
-  "config[:nameservers] → nameservers= → nameservers_from_name → Resolver.search → network calls": {
+  "config[:nameservers]": {
     "user_controlled": "no",
-    "evidence": "The nameservers array comes from DNS lookups for a statically configured record, not from user-provided data."
+    "evidence": "ServiceDiscovery passes nameservers derived from an internal DNS lookup of @nameserver configured by the application, not directly from user input.",
+    "trace": [
+      "lib/gitlab/database/load_balancing/service_discovery.rb:L151-L155"
+    ]
   }
 }
 ```

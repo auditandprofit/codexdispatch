@@ -2,7 +2,11 @@
 {
   "directory": {
     "user_controlled": "no",
-    "evidence": "The directory parameter is derived from a fixed constant (PRODUCTION_DIRECTORY_URL or STAGING_DIRECTORY_URL) based on the environment, with no user input influencing it."
+    "evidence": "The `directory` argument passed to `Acme::Client.new` comes from `acme_api_directory_url`, which returns one of two hard-coded URLs based on the environment and cannot be influenced by user input.",
+    "trace": [
+      "lib/gitlab/lets_encrypt/client.rb:L19-L21",
+      "lib/gitlab/lets_encrypt/client.rb:L37-L43"
+    ]
   }
 }
 ```

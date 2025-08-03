@@ -2,11 +2,19 @@
 {
   "options[:extract_access_token] -> parse_response_legacy -> build_access_token_legacy -> extract_access_token.call": {
     "user_controlled": "no",
-    "evidence": "The extract_access_token proc is taken from OmniAuth::Strategies::Bitbucket.default_options[:client_options], a static configuration not influenced by request parameters."
+    "evidence": "options is derived from OmniAuth::Strategies::Bitbucket.default_options, which is static configuration and not influenced by user input",
+    "trace": [
+      "app/controllers/import/bitbucket_controller.rb:L125-L127",
+      "app/controllers/import/bitbucket_controller.rb:L141-L143"
+    ]
   },
   "options[:site] -> Faraday.new(site) -> connection.run_request": {
     "user_controlled": "no",
-    "evidence": "The site value is sourced from the OmniAuth Bitbucket strategy’s default client_options and cannot be overridden by user input."
+    "evidence": "options[:site] originates from static OmniAuth default configuration, not user-controlled",
+    "trace": [
+      "app/controllers/import/bitbucket_controller.rb:L125-L127",
+      "app/controllers/import/bitbucket_controller.rb:L141-L143"
+    ]
   }
 }
 ```

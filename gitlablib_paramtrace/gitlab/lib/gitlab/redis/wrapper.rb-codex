@@ -2,7 +2,12 @@
 {
   "uri": {
     "user_controlled": "no",
-    "evidence": "The uri argument is taken from internal Redis configuration (e.g. config/redis.yml or instance-specific YAML), which is loaded at startup and not influenced by external user input."
+    "evidence": "The `uri` passed to extract_host_options_from_uri is loaded from Redis configuration YAML files on disk (via `fetch_config`), not from any user input.",
+    "trace": [
+      "lib/gitlab/redis/wrapper.rb:L165-L173",
+      "lib/gitlab/redis/wrapper.rb:L240-L245",
+      "lib/gitlab/redis/wrapper.rb:L247-L253"
+    ]
   }
 }
 ```

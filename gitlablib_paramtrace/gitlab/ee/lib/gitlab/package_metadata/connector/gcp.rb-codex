@@ -2,7 +2,11 @@
 {
   "endpoint": {
     "user_controlled": "no",
-    "evidence": "Google::Cloud::Storage.anonymous is called without passing a host or endpoint parameter, so it uses the library’s built-in default endpoint rather than any user-supplied value."
+    "evidence": "Google::Cloud::Storage.anonymous uses the fixed Google Storage endpoint and does not accept a host override; sync_config.base_uri is used as the bucket name, not the request host.",
+    "trace": [
+      "ee/lib/gitlab/package_metadata/connector/gcp.rb:L37-L39",
+      "ee/lib/gitlab/package_metadata/connector/gcp.rb:L41-L43"
+    ]
   }
 }
 ```

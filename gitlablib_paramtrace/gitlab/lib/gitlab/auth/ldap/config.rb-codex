@@ -2,11 +2,19 @@
 {
   "attribute": {
     "user_controlled": "no",
-    "evidence": "The attribute argument comes from the LDAP config's uid setting, which is predefined in application config and not influenced by user input."
+    "evidence": "The attribute (uid) is read from the static LDAP configuration (options['uid']) defined in GitLab’s config, not from any user input.",
+    "trace": [
+      "lib/gitlab/auth/ldap/config.rb:L176-L180",
+      "lib/gitlab/auth/ldap/config.rb:L72-L75",
+      "lib/gitlab/auth/ldap/config.rb:L40-L43"
+    ]
   },
   "value": {
-    "user_controlled": "yes",
-    "evidence": "The value '%{username}' is interpolated with the end user–supplied username at runtime, allowing an attacker to control the filter value."
+    "user_controlled": "no",
+    "evidence": "The value '%{username}' is a hardcoded template string in the code and not directly influenced by user input at this call site.",
+    "trace": [
+      "lib/gitlab/auth/ldap/config.rb:L176-L180"
+    ]
   }
 }
 ```

@@ -1,8 +1,13 @@
 ```json
 {
-  "value -> Faraday.new(site) -> connection.run_request": {
+  "value": {
     "user_controlled": "no",
-    "evidence": "The site parameter is set from Gitlab::Geo.primary_node_url, a static configuration value not influenced by user input."
+    "evidence": "Gitlab::Geo.primary_node_url is loaded from the GeoNode.url field in the database, configured by administrators and not influenced by end-user input.",
+    "trace": [
+      "ee/lib/gitlab/geo/oauth/session.rb:L34-L40",
+      "ee/lib/gitlab/geo.rb:L60-L62",
+      "ee/app/models/geo_node.rb:L141-L144"
+    ]
   }
 }
 ```

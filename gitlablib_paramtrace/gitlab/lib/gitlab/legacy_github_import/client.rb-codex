@@ -1,1 +1,26 @@
-{"url":{"user_controlled":"no","evidence":"OAuth2::Client is initialized with fixed site and endpoint URLs from application/configuration (OmniAuth or GitLab admin settings), not from untrusted user input."},"opts[:params]":{"user_controlled":"no","evidence":"Query parameters (client_id, redirect_uri, state) are provided by application code or OAuth2 strategy defaults, not merged from external request parameters."},"opts[:body]":{"user_controlled":"no","evidence":"Body parameters (authorization code, client secret) originate from the OAuth provider callback or config, not directly from attacker-controlled inputs."}}
+```json
+{
+  "url": {
+    "user_controlled": "no",
+    "evidence": "The OAuth2::Client is initialized with the GitHub OAuth provider URLs from GitLab configuration (`github_options`), which are set by administrators and not influenced by user input.",
+    "trace": [
+      "lib/gitlab/legacy_github_import/client.rb:L45-L49"
+    ]
+  },
+  "opts[:params]": {
+    "user_controlled": "no",
+    "evidence": "The `authorize_url` parameters (redirect_uri, scope, state) are derived from internal route helpers and application constants, not from user-supplied input.",
+    "trace": [
+      "lib/gitlab/legacy_github_import/client.rb:L52-L58"
+    ]
+  },
+  "opts[:body]": {
+    "user_controlled": "yes",
+    "evidence": "The `code` passed into `get_token` comes directly from the OAuth callback `params[:code]`, which is attacker-controllable.",
+    "trace": [
+      "lib/gitlab/legacy_github_import/client.rb:L60-L62",
+      "app/controllers/projects/import/github_controller.rb:L22-L25"
+    ]
+  }
+}
+```

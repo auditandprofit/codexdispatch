@@ -2,11 +2,17 @@
 {
   "attribute": {
     "user_controlled": "no",
-    "evidence": "AD_USER_DISABLED is defined with a hard-coded attribute literal (\"userAccountControl:1.2.840.113556.1.4.803\"), not derived from user input."
+    "evidence": "AD_USER_DISABLED is constructed with a hardcoded string literal for the attribute, not derived from user input.",
+    "trace": [
+      "lib/gitlab/auth/ldap/person.rb:L6-L11"
+    ]
   },
   "value": {
     "user_controlled": "no",
-    "evidence": "AD_USER_DISABLED uses a fixed literal value (\"2\"), not influenced by user input."
+    "evidence": "AD_USER_DISABLED is constructed with a hardcoded string literal '2' for the value, not derived from user input.",
+    "trace": [
+      "lib/gitlab/auth/ldap/person.rb:L6-L11"
+    ]
   }
 }
 ```

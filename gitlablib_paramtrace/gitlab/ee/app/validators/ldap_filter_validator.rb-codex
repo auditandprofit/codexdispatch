@@ -2,7 +2,10 @@
 {
   "ldap_filter_string": {
     "user_controlled": "yes",
-    "evidence": "The `value` argument to `FilterParser.parse` comes directly from the model’s attribute (e.g. a form parameter) without any sanitization, so an attacker can supply arbitrary LDAP filter strings."
+    "evidence": "The `value` passed into `FilterParser.parse` is the model’s attribute value, which comes directly from user-submitted form data and isn’t sanitized before parsing.",
+    "trace": [
+      "ee/app/validators/ldap_filter_validator.rb:L14-L17"
+    ]
   }
 }
 ```

@@ -2,43 +2,73 @@
 {
   "credential_source[:url]": {
     "user_controlled": "no",
-    "evidence": "make_creds reads JSON from BaseClient#credentials via GitLab::Json.dump, which is loaded from server configuration rather than user-supplied input."
+    "evidence": "The JSON passed to make_creds is sourced from GitLab integration settings (DB), only editable by project maintainers, not end users.",
+    "trace": [
+      "ee/lib/google_cloud/compute/client.rb:L71-L77"
+    ]
   },
   "credential_source[:file]": {
     "user_controlled": "no",
-    "evidence": "the credentials JSON originates from application configuration (BaseClient#credentials), not from external user parameters."
+    "evidence": "The credentials JSON is loaded from integration configuration, not from user request parameters.",
+    "trace": [
+      "ee/lib/google_cloud/compute/client.rb:L71-L77"
+    ]
   },
   "credential_source[:executable][:command]": {
     "user_controlled": "no",
-    "evidence": "external_credentials passes a static credentials object from server config into make_creds, not influenced by request or user data."
+    "evidence": "Only administrators supply the external account JSON via integration settings; no user input reaches this code.",
+    "trace": [
+      "ee/lib/google_cloud/compute/client.rb:L71-L77"
+    ]
   },
   "credential_source[:executable][:output_file]": {
     "user_controlled": "no",
-    "evidence": "the JSON for make_creds is generated from BaseClient#credentials stored in application settings, not from user input."
+    "evidence": "Integration credentials JSON is not modifiable by external users at request time.",
+    "trace": [
+      "ee/lib/google_cloud/compute/client.rb:L71-L77"
+    ]
   },
   "credential_source[:region_url]": {
     "user_controlled": "no",
-    "evidence": "make_creds receives credentials from GitLab configuration (BaseClient#credentials), not from any HTTP or user-controllable source."
+    "evidence": "The JSON key is provided through protected integration settings, not from HTTP parameters.",
+    "trace": [
+      "ee/lib/google_cloud/compute/client.rb:L71-L77"
+    ]
   },
   "credential_source[:regional_cred_verification_url]": {
     "user_controlled": "no",
-    "evidence": "the JSON key io passed into make_creds is built from server-side credentials, not exposed to user manipulation."
+    "evidence": "Credentials JSON originates from GitLab project integration configuration, not runtime user input.",
+    "trace": [
+      "ee/lib/google_cloud/compute/client.rb:L71-L77"
+    ]
   },
   "credential_source[:imdsv2_session_token_url]": {
     "user_controlled": "no",
-    "evidence": "credentials come from application settings via BaseClient#credentials and are not derived from user input."
+    "evidence": "Only project maintainers/admins configure the JSON key; end users cannot influence it during requests.",
+    "trace": [
+      "ee/lib/google_cloud/compute/client.rb:L71-L77"
+    ]
   },
   "token_url": {
     "user_controlled": "no",
-    "evidence": "make_creds is invoked with JSON dumped from a credentials object loaded from server configuration, not from untrusted input."
+    "evidence": "The token_url in the JSON is part of the service account config loaded from integration settings.",
+    "trace": [
+      "ee/lib/google_cloud/compute/client.rb:L71-L77"
+    ]
   },
   "service_account_impersonation_url": {
     "user_controlled": "no",
-    "evidence": "the credentials JSON is sourced from BaseClient#credentials in application config, not from user-controlled data."
+    "evidence": "This URL is taken from credentials stored in the database by maintainers, not from user-supplied data.",
+    "trace": [
+      "ee/lib/google_cloud/compute/client.rb:L71-L77"
+    ]
   },
   "subject_token_type": {
     "user_controlled": "no",
-    "evidence": "subject_token_type is read from the credentials JSON coming from server configuration, which is not influenced by external users."
+    "evidence": "subject_token_type is defined in the protected credentials JSON, not influenced by runtime user input.",
+    "trace": [
+      "ee/lib/google_cloud/compute/client.rb:L71-L77"
+    ]
   }
 }
 ```
