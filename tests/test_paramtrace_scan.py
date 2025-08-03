@@ -20,7 +20,10 @@ class TestParamtraceArgs(unittest.TestCase):
 class TestParamtraceScan(unittest.TestCase):
     def test_scan_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
-            sample = os.path.join(tmp, "file-codex")
+            slug = "Sample"
+            sample_dir = os.path.join(tmp, slug)
+            os.makedirs(sample_dir)
+            sample = os.path.join(sample_dir, "file.rb-codex")
             content = """```json
 {
   \"a -> b\": {
@@ -35,6 +38,16 @@ class TestParamtraceScan(unittest.TestCase):
 ```"""
             with open(sample, "w", encoding="utf-8") as fh:
                 fh.write(content)
+
+            findings = {
+                "Sample": {
+                    "finding": {"method": "x"},
+                    "files": ["file.rb"],
+                }
+            }
+            with open(os.path.join(tmp, "findings.json"), "w", encoding="utf-8") as fh:
+                json.dump(findings, fh)
+
             out = subprocess.check_output([
                 sys.executable,
                 "dispatch.py",
@@ -46,4 +59,5 @@ class TestParamtraceScan(unittest.TestCase):
             self.assertEqual(data[0]["file"], sample)
             self.assertEqual(data[0]["param"], "a -> b")
             self.assertEqual(data[0]["trace"], "tr")
+            self.assertEqual(data[0]["finding"], {"method": "x"})
 
