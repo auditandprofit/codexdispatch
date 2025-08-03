@@ -1,4 +1,8 @@
-"""Dispatches Codex runs across multiple files and modes, coordinating workers and multi-pass processing."""
+"""Dispatches Codex runs across multiple files and modes, coordinating workers and multi-pass processing.
+
+TODO(#123): track per-file workdir enhancements.
+See https://github.com/sourcegraph/codexdispatch/issues/123 for details.
+"""
 
 import os
 import sys
@@ -310,9 +314,14 @@ def main() -> None:
             output_path = os.path.join(output_dir, file_name)
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-            work_dir = args.work_dir if args.file_list else (
-                os.path.dirname(path) if args.tree_dirs else args.work_dir
-            )
+            if args.file_list:
+                work_dir = (
+                    os.path.dirname(path)
+                    if args.per_file_workdir or args.work_dir is None
+                    else args.work_dir
+                )
+            else:
+                work_dir = os.path.dirname(path) if args.tree_dirs else args.work_dir
             cmd = [
                 codex_bin,
                 "exec",

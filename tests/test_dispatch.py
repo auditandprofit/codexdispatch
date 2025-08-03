@@ -75,6 +75,23 @@ class TestParseArgs(unittest.TestCase):
         self.assertIsNone(args.data_dir)
         self.assertIsNone(args.tree_dirs)
         self.assertTrue(args.prepend_path)
+        self.assertFalse(args.per_file_workdir)
+
+    def test_parse_per_file_workdir(self):
+        argv = [
+            "dispatch.py",
+            "tmpl",
+            "--file-list",
+            "list.txt",
+            "-o",
+            "out",
+            "-j",
+            "1",
+            "--per-file-workdir",
+        ]
+        with unittest.mock.patch.object(sys, "argv", argv):
+            args = dispatch.parse_args()
+        self.assertTrue(args.per_file_workdir)
 
     def test_parse_no_prepend_path(self):
         argv = [
@@ -124,6 +141,110 @@ class TestParseArgs(unittest.TestCase):
         with unittest.mock.patch.object(sys, "argv", argv):
             with self.assertRaises(SystemExit):
                 dispatch.parse_args()
+
+
+class TestWorkDirSelection(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.template = os.path.join(self.tmpdir.name, "tmpl.txt")
+        with open(self.template, "w", encoding="utf-8") as f:
+            f.write("T")
+        self.subdir = os.path.join(self.tmpdir.name, "sub")
+        os.mkdir(self.subdir)
+        self.file = os.path.join(self.subdir, "file.txt")
+        with open(self.file, "w", encoding="utf-8") as f:
+            f.write("X")
+        self.listfile = os.path.join(self.tmpdir.name, "list.txt")
+        with open(self.listfile, "w", encoding="utf-8") as f:
+            f.write(self.file + "\n")
+        self.outdir = os.path.join(self.tmpdir.name, "out")
+        os.mkdir(self.outdir)
+
+    def _dispatch_and_capture(self, extra_args):
+        argv = [
+            "dispatch.py",
+            self.template,
+            "--file-list",
+            self.listfile,
+            "-o",
+            self.outdir,
+            "-j",
+            "1",
+        ] + extra_args
+        captured = {}
+
+        def fake_invoke(cmd, prompt, timeout, path):
+            captured[path] = cmd[cmd.index("-C") + 1]
+
+        with unittest.mock.patch.object(sys, "argv", argv), \
+            unittest.mock.patch("codexdispatch.dispatcher.find_codex_bin", return_value="codex"), \
+            unittest.mock.patch("codexdispatch.dispatcher._invoke_codex", side_effect=fake_invoke):
+            dispatch.main()
+        return captured[self.file]
+
+    def test_workdir_combinations(self):
+        cwd = os.getcwd()
+        self.assertEqual(self._dispatch_and_capture([]), cwd)
+        self.assertEqual(
+            self._dispatch_and_capture(["-C", self.tmpdir.name]),
+            self.tmpdir.name,
+        )
+        self.assertEqual(
+            self._dispatch_and_capture(["--per-file-workdir"]),
+            self.subdir,
+        )
+        self.assertEqual(
+            self._dispatch_and_capture(["-C", self.tmpdir.name, "--per-file-workdir"]),
+            self.subdir,
+        )
+
+
+class PerFileWorkDirIntegration(unittest.TestCase):
+    def test_per_file_workdir_two_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            template = os.path.join(tmp, "tmpl.txt")
+            with open(template, "w", encoding="utf-8") as f:
+                f.write("T")
+            dir_a = os.path.join(tmp, "a")
+            dir_b = os.path.join(tmp, "b")
+            os.mkdir(dir_a)
+            os.mkdir(dir_b)
+            file_a = os.path.join(dir_a, "a.txt")
+            file_b = os.path.join(dir_b, "b.txt")
+            with open(file_a, "w", encoding="utf-8") as f:
+                f.write("A")
+            with open(file_b, "w", encoding="utf-8") as f:
+                f.write("B")
+            lst = os.path.join(tmp, "list.txt")
+            with open(lst, "w", encoding="utf-8") as f:
+                f.write(file_a + "\n" + file_b + "\n")
+            outdir = os.path.join(tmp, "out")
+            os.mkdir(outdir)
+
+            argv = [
+                "dispatch.py",
+                template,
+                "--file-list",
+                lst,
+                "-o",
+                outdir,
+                "-j",
+                "2",
+                "--per-file-workdir",
+            ]
+            captured: dict[str, str] = {}
+
+            def fake_invoke(cmd, prompt, timeout, path):
+                captured[path] = cmd[cmd.index("-C") + 1]
+
+            with unittest.mock.patch.object(sys, "argv", argv), \
+                unittest.mock.patch("codexdispatch.dispatcher.find_codex_bin", return_value="codex"), \
+                unittest.mock.patch("codexdispatch.dispatcher._invoke_codex", side_effect=fake_invoke):
+                dispatch.main()
+
+            self.assertEqual(captured[file_a], dir_a)
+            self.assertEqual(captured[file_b], dir_b)
 
 
 class DispatchIntegration(unittest.TestCase):

@@ -114,6 +114,12 @@ def parse_args() -> argparse.Namespace:
         help="working directory to run Codex in (default: current directory)",
     )
     parser.add_argument(
+        "--per-file-workdir",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="in --file-list mode, set -C to the parent directory of each file",
+    )
+    parser.add_argument(
         "--timeout",
         type=int,
         default=int(os.getenv("CODEX_DISPATCH_TIMEOUT", 900)),
