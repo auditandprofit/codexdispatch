@@ -6,7 +6,7 @@ import os
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("template", help="path to prompt template")
+    parser.add_argument("template", nargs="?", help="path to prompt template")
     parser.add_argument(
         "--security-audit",
         action="store_true",
@@ -58,7 +58,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="path to JSON with custom scoring rules",
     )
-    group = parser.add_mutually_exclusive_group(required=True)
+    group = parser.add_mutually_exclusive_group()
     group.add_argument(
         "--data-dir",
         dest="data_dir",
@@ -90,14 +90,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-o",
         "--output-dir",
-        required=True,
+        required=False,
         help="directory for codex outputs",
     )
     parser.add_argument(
         "-j",
         "--workers",
         type=int,
-        required=True,
+        required=False,
         help="number of parallel workers",
     )
     parser.add_argument(
@@ -143,7 +143,23 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="base directory to resolve findings file paths",
     )
+    parser.add_argument(
+        "--scan-paramtrace",
+        dest="scan_paramtrace",
+        default=None,
+        help="recursively scan directory for paramtrace outputs",
+    )
     args = parser.parse_args()
+    if args.scan_paramtrace:
+        return args
+    if args.template is None:
+        parser.error("template is required")
+    if not any([args.data_dir, args.tree_dirs, args.file_list, args.findings_json]):
+        parser.error(
+            "one of --data-dir, --tree-dirs, --file-list, or --findings-json is required"
+        )
+    if args.output_dir is None or args.workers is None:
+        parser.error("--output-dir and --workers are required")
     if args.mock_audit and not args.security_audit:
         parser.error("--mock-audit requires --security-audit")
     if args.security_audit:

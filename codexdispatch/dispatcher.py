@@ -15,6 +15,39 @@ from .utils import collect_files, _invoke_codex, find_codex_bin, load_files
 from .security_audit import run_security_audit
 
 
+def _run_paramtrace_scan(path: str) -> None:
+    matches: list[dict[str, str]] = []
+    for dirpath, _, filenames in os.walk(path):
+        for name in filenames:
+            fpath = os.path.join(dirpath, name)
+            try:
+                with open(fpath, "r", encoding="utf-8") as fh:
+                    text = fh.read().strip()
+            except OSError:
+                continue
+            if text.startswith("```"):
+                lines = text.splitlines()
+                if lines:
+                    lines = lines[1:]
+                if lines and lines[-1].startswith("```"):
+                    lines = lines[:-1]
+                text = "\n".join(lines)
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            for chain, info in data.items():
+                if isinstance(info, dict) and info.get("user_controlled") == "yes":
+                    matches.append(
+                        {
+                            "file": fpath,
+                            "call": chain,
+                            "evidence": info.get("evidence", ""),
+                        }
+                    )
+    print(json.dumps(matches, indent=2))
+
+
 def _run_findings_mode(args) -> None:
     with open(args.template, "r", encoding="utf-8") as f:
         template = f.read()
@@ -94,7 +127,9 @@ def _run_findings_mode(args) -> None:
 
 def main() -> None:
     args = parse_args()
-
+    if getattr(args, "scan_paramtrace", None):
+        _run_paramtrace_scan(args.scan_paramtrace)
+        return
     if args.security_audit:
         run_security_audit(args)
         return
