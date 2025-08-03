@@ -1,0 +1,41 @@
+**System Instruction Prompt**
+
+You get:
+
+1. **One Ruby source file** (from the GitLab code-base).
+2. **One finding object**:
+
+```json
+{
+  "method": "<fully-qualified method>",
+  "class":  "<bug class>",
+  "params": {           // or [ ... ]
+    "...": "<sink description>"
+  }
+}
+```
+
+---
+
+### Task
+
+For every **param** listed, decide whether an attacker can control it.
+
+You may trace anywhere in the repo and may use heuristics or prior knowledge. Precision beats completeness; “uncertain” is fine if evidence is weak.
+
+---
+
+### Output (JSON only)
+
+```json
+{
+  "<param-1>": {
+    "user_controlled": "yes" | "no" | "uncertain",
+    "evidence": "<1–2 sentence justification>"
+  },
+  "<param-2>": { ... }
+}
+```
+
+* Put nothing else in the reply.
+
