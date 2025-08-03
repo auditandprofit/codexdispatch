@@ -8,7 +8,7 @@ import subprocess
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .args import parse_args
 from .utils import collect_files, _invoke_codex, find_codex_bin, load_files
@@ -34,7 +34,7 @@ def _run_findings_mode(args) -> None:
             entries.append((key, finding, path))
             all_paths.append(path)
 
-    base: str | None = None
+    base: Optional[str] = None
     if args.relative_dir and all_paths:
         if len(all_paths) == 1:
             base = os.path.dirname(all_paths[0])
@@ -162,7 +162,7 @@ def main() -> None:
         else:
             return os.path.relpath(path), None
 
-    def build_prompt(data: str, prev_output: str | None) -> str:
+    def build_prompt(data: str, prev_output: Optional[str]) -> str:
         if prev_output is None:
             return f"{template}\n{data}"
         return f"{template}\n{prev_output}\n{data}"

@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 from heapq import heappush, heappop
 from pathlib import Path
+from typing import Optional
 import re
 
 from .utils import (
@@ -134,7 +135,7 @@ def run_security_audit(args) -> None:
                 priority += weight
         return priority
 
-    def rel_and_root(path: str) -> tuple[str, str | None]:
+    def rel_and_root(path: str) -> tuple[str, Optional[str]]:
         if args.tree_dirs:
             root = next(
                 (
@@ -162,7 +163,7 @@ def run_security_audit(args) -> None:
         parts.append(data)
         return "\n".join(parts)
 
-    def resolve_path(lead: str) -> str | None:
+    def resolve_path(lead: str) -> Optional[str]:
         if args.audit_root:
             base = os.path.abspath(args.audit_root)
             cand = os.path.join(base, lead) if not os.path.isabs(lead) else lead

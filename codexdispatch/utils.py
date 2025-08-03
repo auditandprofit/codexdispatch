@@ -4,6 +4,7 @@ import subprocess
 import logging
 import json
 import shutil
+from typing import Optional
 
 
 def load_files(data_dir: str) -> list[str]:
@@ -39,7 +40,7 @@ def collect_files(dirs: list[str], recursive: bool = True) -> list[str]:
     return sorted(files)
 
 
-def find_codex_bin(path_hint: str | None) -> str:
+def find_codex_bin(path_hint: Optional[str]) -> str:
     """Return the path to the codex binary.
 
     If *path_hint* is provided it must exist, otherwise the function searches
@@ -77,7 +78,9 @@ def find_codex_bin(path_hint: str | None) -> str:
     sys.exit(1)
 
 
-def _invoke_codex(cmd: list[str], prompt: str, timeout: int | None, path: str) -> None:
+def _invoke_codex(
+    cmd: list[str], prompt: str, timeout: Optional[int], path: str
+) -> None:
     max_tries = 2
     for attempt in range(1, max_tries + 1):
         try:
