@@ -37,6 +37,18 @@ def _run_paramtrace_scan(path: str) -> None:
             slug = re.sub(r"[^A-Za-z0-9._-]+", "_", key)[:50]
             finding_lookup[slug] = data
 
+    gitlab_findings_path = os.path.join(path, "gitlab_findings.json")
+    gl_lookup: dict[str, str] = {}
+    if os.path.exists(gitlab_findings_path):
+        try:
+            with open(gitlab_findings_path, "r", encoding="utf-8") as fh:
+                gitlab = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            gitlab = {}
+        for key, data in gitlab.items():
+            for f in data.get("files", []):
+                gl_lookup[os.path.normpath(f)] = key
+
     for dirpath, _, filenames in os.walk(path):
         for name in filenames:
             fpath = os.path.join(dirpath, name)
@@ -73,6 +85,17 @@ def _run_paramtrace_scan(path: str) -> None:
                         finding_obj = candidate.get("finding")
                         break
 
+            # Derive original source path for GitLab lookup.
+            src_path = rel_fpath.replace("gitlablib_paramtrace/", "", 1)
+            if src_path.endswith("-codex"):
+                src_path = src_path[: -len("-codex")]
+            src_path = os.path.normpath(src_path)
+            method = None
+            for cand, key in gl_lookup.items():
+                if cand.endswith(src_path):
+                    method = key
+                    break
+
             for chain, info in data.items():
                 if isinstance(info, dict) and info.get("user_controlled") == "yes":
                     result = {
@@ -83,6 +106,8 @@ def _run_paramtrace_scan(path: str) -> None:
                     }
                     if finding_obj:
                         result["finding"] = finding_obj
+                    if method:
+                        result["method"] = method
                     matches.append(result)
 
     print(json.dumps(matches, indent=2))

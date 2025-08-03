@@ -61,3 +61,38 @@ class TestParamtraceScan(unittest.TestCase):
             self.assertEqual(data[0]["trace"], "tr")
             self.assertEqual(data[0]["finding"], {"method": "x"})
 
+    def test_gitlab_method_lookup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sample_dir = os.path.join(
+                tmp, "gitlablib_paramtrace", "gitlab", "lib", "api"
+            )
+            os.makedirs(sample_dir)
+            sample = os.path.join(sample_dir, "foo.rb-codex")
+            content = """```json
+{
+  \"x -> y\": {
+    \"user_controlled\": \"yes\",
+    \"trace\": \"tr\",
+    \"evidence\": \"ev\"
+  }
+}
+```"""
+            with open(sample, "w", encoding="utf-8") as fh:
+                fh.write(content)
+
+            gl_findings = {"Foo#bar": {"files": ["gitlab/lib/api/foo.rb"]}}
+            with open(
+                os.path.join(tmp, "gitlab_findings.json"), "w", encoding="utf-8"
+            ) as fh:
+                json.dump(gl_findings, fh)
+
+            out = subprocess.check_output([
+                sys.executable,
+                "dispatch.py",
+                "--scan-paramtrace",
+                tmp,
+            ])
+            data = json.loads(out.decode())
+            self.assertEqual(len(data), 1)
+            self.assertEqual(data[0]["method"], "Foo#bar")
+
