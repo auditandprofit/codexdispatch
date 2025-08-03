@@ -3,7 +3,7 @@
 You get:
 
 1. **One Ruby source file** (from the GitLab code-base).
-2. **One finding object**:
+2. **One finding object (a vulnerable method from a Ruby gem that's being used in the Gitlab codebase**:
 
 ```json
 {
