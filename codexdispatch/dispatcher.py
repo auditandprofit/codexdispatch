@@ -41,7 +41,8 @@ def _run_paramtrace_scan(path: str) -> None:
                     matches.append(
                         {
                             "file": fpath,
-                            "call": chain,
+                            "param": chain,
+                            "trace": info.get("trace", ""),
                             "evidence": info.get("evidence", ""),
                         }
                     )

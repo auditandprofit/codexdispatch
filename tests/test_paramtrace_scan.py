@@ -21,9 +21,18 @@ class TestParamtraceScan(unittest.TestCase):
     def test_scan_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             sample = os.path.join(tmp, "file-codex")
-            content = (
-                """```json\n{\n  \"a -> b\": {\n    \"user_controlled\": \"yes\",\n    \"evidence\": \"ev\"\n  },\n  \"c -> d\": {\n    \"user_controlled\": \"no\"\n  }\n}\n```"""
-            )
+            content = """```json
+{
+  \"a -> b\": {
+    \"user_controlled\": \"yes\",
+    \"evidence\": \"ev\",
+    \"trace\": \"tr\"
+  },
+  \"c -> d\": {
+    \"user_controlled\": \"no\"
+  }
+}
+```"""
             with open(sample, "w", encoding="utf-8") as fh:
                 fh.write(content)
             out = subprocess.check_output([
@@ -35,5 +44,6 @@ class TestParamtraceScan(unittest.TestCase):
             data = json.loads(out.decode())
             self.assertEqual(len(data), 1)
             self.assertEqual(data[0]["file"], sample)
-            self.assertEqual(data[0]["call"], "a -> b")
+            self.assertEqual(data[0]["param"], "a -> b")
+            self.assertEqual(data[0]["trace"], "tr")
 
