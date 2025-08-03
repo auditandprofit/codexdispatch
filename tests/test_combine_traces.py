@@ -21,7 +21,7 @@ class TestCombineTraces(unittest.TestCase):
                 {
                     "file": "dummy",  # unused
                     "param": "p",
-                    "trace": ["sample.rb:L1-2"],
+                    "trace": [f"{pt_file}:L1-2"],
                     "evidence": "ev",
                     "method": "Foo.bar",
                 }
@@ -50,8 +50,6 @@ class TestCombineTraces(unittest.TestCase):
                     pt_path,
                     "--newfindings",
                     nf_path,
-                    "--base-dir",
-                    base_dir,
                     "--output-dir",
                     out_dir,
                 ]
