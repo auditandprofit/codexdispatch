@@ -101,6 +101,7 @@ def _run_findings_mode(args) -> None:
         )
         out_path = os.path.join(args.output_dir, slug, f"{rel_out}-codex")
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        work_dir = os.path.dirname(path)
         cmd = [
             codex_bin,
             "exec",
@@ -109,7 +110,7 @@ def _run_findings_mode(args) -> None:
             "--dangerously-bypass-approvals-and-sandbox",
             "--skip-git-repo-check",
             "-C",
-            args.work_dir,
+            work_dir,
         ]
         logging.info("FindingsMode: %s -> %s", path, out_path)
         try:

@@ -16,7 +16,10 @@ python dispatch.py TEMPLATE --file-list LIST --output-dir OUT --workers N -C WOR
 - `--file-list` - text file containing paths to process, one per line (file-list mode). In security audit mode entries may be either files or directories.
 - `--output-dir` - directory where results will be written.
 - `--workers` - number of parallel workers.
-- `-C`, `--work-dir` - working directory to execute Codex in. Defaults to the current directory. In file-list mode this directory is used for all files; in tree mode the default is each file's parent.
+- `-C`, `--work-dir` - working directory to execute Codex in. Defaults to the current
+  directory. In file-list mode this directory is used for all files. In tree mode
+  the default is each file's parent. When using `--findings-json`, each file runs in
+  its own parent directory and `-C`/`--work-dir` is not allowed.
 - `--recursive` / `--no-recursive` - control whether tree mode walks subdirectories (default: recursive).
 - `--codex-bin` - path to the codex binary. If not provided, the script looks for
   `codex` in `PATH` and then searches the current directory.
