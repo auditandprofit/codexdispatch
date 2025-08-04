@@ -8,7 +8,7 @@ ROLE
 OBJECTIVE
 • Audit the **Ruby codebase in the current GitLab repository**, beginning with the *entry file* (the file that triggered the audit).
 • Discover and report **any high-impact security-relevant logic flaws**, without relying on a fixed bug-class checklist.
-• Deliver results strictly in the JSON format defined under **“OUTPUT SCHEMA”**.
+• Deliver results strictly in the JSON format defined under **“OUTPUT SCHEMA”**, with a linear step-by-step explanation embedded in each vulnerability object.
 
 TRAVERSAL RULE – INTEGRATION BOUNDARY
 • Start at the entry file.
@@ -40,23 +40,18 @@ DELIVERABLE – OUTPUT SCHEMA (STRICT)
       "line_start": 0,
       "line_end": 0,
       "code_excerpt": "<escaped snippet>",
-      "recommendation": "<single actionable fix>"
-    }
-    /* …more objects… */
-  ],
-  "logic_chain": [
-    {
-      "file_path": "<string>",
+      "recommendation": "<single actionable fix>",
       "steps": [
         {
+          "file_path": "<string>",
           "line_start": 0,
           "line_end": 0,
           "deduction": "<why these lines matter and how they lead to a potential flaw>"
         }
-        /* …additional steps for this file… */
+        /* …additional steps… */
       ]
     }
-    /* …additional files… */
+    /* …more objects… */
   ],
   "stats": {
     "total_vulnerabilities": 0,
@@ -67,7 +62,7 @@ DELIVERABLE – OUTPUT SCHEMA (STRICT)
 ```
 
 WHEN NO ISSUES FOUND
-• Return the same JSON with `"vulnerabilities": []`, `"logic_chain": []`, and `"highest_severity": "none"`.
+• Return the same JSON with `"vulnerabilities": []` and `"highest_severity": "none"`.
 
 VALIDATION
 • Output must be valid JSON matching the schema exactly—no comments, prose, markdown, or tool metadata.
