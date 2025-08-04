@@ -234,6 +234,107 @@ class TestPhaseModeWorkflow(unittest.TestCase):
 
             self.assertEqual(captured_env, {"FOO": "BAR"})
 
+    def test_backtick_wrapped_findings_cleaned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            finding = os.path.join(tmp, "f.json")
+            with open(finding, "w", encoding="utf-8") as fh:
+                fh.write('````\n{"finding": "x"}\n````'.replace("```" + "`", "```"))
+            listfile = os.path.join(tmp, "findings.txt")
+            with open(listfile, "w", encoding="utf-8") as fh:
+                fh.write(finding + "\n")
+            orch = os.path.join(tmp, "orch.txt")
+            with open(orch, "w", encoding="utf-8") as fh:
+                fh.write("orch")
+            outdir = os.path.join(tmp, "out")
+            os.mkdir(outdir)
+            workdir = os.path.join(tmp, "repo")
+            os.mkdir(workdir)
+            argv = [
+                "dispatch.py",
+                "--phase-mode",
+                "--orchestrator-template",
+                orch,
+                "--findings-list",
+                listfile,
+                "--findings-workdir",
+                workdir,
+                "-o",
+                outdir,
+                "-j",
+                "1",
+            ]
+            with mock.patch.object(sys, "argv", argv):
+                args = dispatch.parse_args()
+
+            def fake_find_codex_bin(path):
+                return "codex"
+
+            def fake_orchestrator(prompt, env=None):
+                return {"conclusion": "valid", "summary": "done"}
+
+            with mock.patch("codexdispatch.dispatcher.find_codex_bin", fake_find_codex_bin), \
+                mock.patch("codexdispatch.dispatcher.call_orchestrator", fake_orchestrator):
+                dispatcher._run_phase_mode(args)
+
+            phase1_dir = os.path.join(outdir, "phase_1")
+            phase1_path = os.path.join(phase1_dir, os.path.basename(finding))
+            with open(phase1_path, "r", encoding="utf-8") as fh:
+                data = fh.read()
+            self.assertEqual(data, json.dumps({"finding": "x"}))
+            self.assertFalse(os.path.exists(os.path.join(phase1_dir, "parse_errors.log")))
+
+    def test_unparsable_findings_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            finding = os.path.join(tmp, "f.json")
+            with open(finding, "w", encoding="utf-8") as fh:
+                fh.write("{not json")
+            listfile = os.path.join(tmp, "findings.txt")
+            with open(listfile, "w", encoding="utf-8") as fh:
+                fh.write(finding + "\n")
+            orch = os.path.join(tmp, "orch.txt")
+            with open(orch, "w", encoding="utf-8") as fh:
+                fh.write("orch")
+            outdir = os.path.join(tmp, "out")
+            os.mkdir(outdir)
+            workdir = os.path.join(tmp, "repo")
+            os.mkdir(workdir)
+            argv = [
+                "dispatch.py",
+                "--phase-mode",
+                "--orchestrator-template",
+                orch,
+                "--findings-list",
+                listfile,
+                "--findings-workdir",
+                workdir,
+                "-o",
+                outdir,
+                "-j",
+                "1",
+            ]
+            with mock.patch.object(sys, "argv", argv):
+                args = dispatch.parse_args()
+
+            def fake_find_codex_bin(path):
+                return "codex"
+
+            orch_mock = mock.Mock()
+
+            with mock.patch("codexdispatch.dispatcher.find_codex_bin", fake_find_codex_bin), \
+                mock.patch("codexdispatch.dispatcher.call_orchestrator", orch_mock):
+                dispatcher._run_phase_mode(args)
+
+            orch_mock.assert_not_called()
+            phase1_dir = os.path.join(outdir, "phase_1")
+            final_dir = os.path.join(outdir, "final")
+            rel = os.path.basename(finding)
+            self.assertFalse(os.path.exists(os.path.join(final_dir, rel)))
+            err_log = os.path.join(phase1_dir, "parse_errors.log")
+            self.assertTrue(os.path.exists(err_log))
+            with open(err_log, "r", encoding="utf-8") as ef:
+                text = ef.read()
+            self.assertIn(rel, text)
+
     def test_cache_resume(self):
         with tempfile.TemporaryDirectory() as tmp:
             finding = os.path.join(tmp, "f.json")

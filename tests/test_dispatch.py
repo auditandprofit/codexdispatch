@@ -368,7 +368,7 @@ class PhaseModeIntegration(unittest.TestCase):
                 out = cmd[cmd.index("--output-last-message") + 1]
                 os.makedirs(os.path.dirname(out), exist_ok=True)
                 with open(out, "w", encoding="utf-8") as fh:
-                    fh.write("X")
+                    fh.write(json.dumps({"finding": "x"}))
                 captured.append(out)
 
             def fake_orchestrator(prompt, env=None):

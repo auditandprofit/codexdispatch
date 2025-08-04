@@ -23,6 +23,19 @@ from .utils import collect_files, _invoke_codex, find_codex_bin, load_files
 from .security_audit import run_security_audit
 
 
+def _strip_backticks(text: str) -> str:
+    """Remove surrounding markdown code fences from ``text`` if present."""
+    stripped = text.strip()
+    if stripped.startswith("```") and stripped.endswith("```"):
+        lines = stripped.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        return "\n".join(lines)
+    return text
+
+
 def call_orchestrator(prompt: str, env: dict[str, str] | None = None) -> dict:
     """Return {"inquiry": "..."} or {"conclusion": "valid|invalid", "summary": "..."}."""
     if env:
@@ -234,6 +247,7 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
     final_dir = os.path.join(args.output_dir, "final")
     os.makedirs(phase1_dir, exist_ok=True)
     os.makedirs(final_dir, exist_ok=True)
+    error_log_path = os.path.join(phase1_dir, "parse_errors.log")
     cache_dir = os.path.join(os.path.dirname(os.path.abspath(args.output_dir)), "cache")
     os.makedirs(cache_dir, exist_ok=True)
     workdirs_path = Path(cache_dir) / "workdirs.json"
@@ -340,6 +354,26 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
             except OSError as exc:
                 logging.error("PhaseMode: failed reading %s: %s", finding_path, exc)
                 continue
+
+            try:
+                json.loads(finding_json)
+            except json.JSONDecodeError as exc:
+                cleaned = _strip_backticks(finding_json)
+                if cleaned != finding_json:
+                    try:
+                        json.loads(cleaned)
+                    except json.JSONDecodeError as exc2:
+                        with open(error_log_path, "a", encoding="utf-8") as ef:
+                            ef.write(f"{rel}: {exc2}\n")
+                        continue
+                    with open(finding_path, "w", encoding="utf-8") as fh:
+                        fh.write(cleaned)
+                    finding_json = cleaned
+                else:
+                    with open(error_log_path, "a", encoding="utf-8") as ef:
+                        ef.write(f"{rel}: {exc}\n")
+                    continue
+
             cache_entry = {"context": [], "status": "open"}
             if os.path.exists(cache_path):
                 try:
