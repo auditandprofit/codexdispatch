@@ -8,6 +8,7 @@ from unittest import mock
 import openai
 
 import codexdispatch.dispatcher as dispatcher
+import codexdispatch.openai_stub as openai_stub
 
 
 class TestCallOrchestrator(unittest.TestCase):
@@ -80,3 +81,30 @@ class TestCallOrchestrator(unittest.TestCase):
         self.assertEqual(result, {"inquiry": "more info"})
         self.assertEqual(mock_gen.call_count, 2)
         self.assertGreaterEqual(elapsed, 0.01)
+
+
+class TestGenerateResponse(unittest.TestCase):
+    def test_tools_payload_includes_name(self):
+        captured = {}
+
+        class FakeResponses:
+            def create(self, **kwargs):
+                captured["tools"] = kwargs.get("tools", [])
+                return types.SimpleNamespace(output=[])
+
+        fake_client = types.SimpleNamespace(responses=FakeResponses())
+
+        with mock.patch(
+            "codexdispatch.openai_stub.openai_configure_api",
+            return_value=fake_client,
+        ):
+            messages = [{"role": "user", "content": "hi"}]
+            funcs = [{"name": "helper", "parameters": {}}]
+            openai_stub.openai_generate_response(
+                messages=messages, functions=funcs
+            )
+
+        tools = captured.get("tools", [])
+        self.assertTrue(all("name" in t for t in tools))
+        self.assertEqual(tools[0]["name"], "web_search")
+        self.assertEqual(tools[1]["name"], "helper")

@@ -47,9 +47,12 @@ def openai_generate_response(
     if client is None:
         raise RuntimeError("OpenAI client is not configured")
 
-    tools: List[Dict[str, Any]] = [{"type": "web_search"}]
+    tools: List[Dict[str, Any]] = [{"type": "web_search", "name": "web_search"}]
     if functions:
-        tools.extend({"type": "function", "function": f} for f in functions)
+        tools.extend(
+            {"type": "function", "name": f["name"], "function": f}
+            for f in functions
+        )
 
     params: Dict[str, Any] = {
         "model": model,
