@@ -165,6 +165,65 @@ class TestParseArgs(unittest.TestCase):
         self.assertEqual(args.file_list, "files.txt")
         self.assertEqual(args.max_inquiries, 3)
 
+    def test_findings_list_requires_workdir(self):
+        argv = [
+            "dispatch.py",
+            "--phase-mode",
+            "--orchestrator-template",
+            "orch.txt",
+            "--findings-list",
+            "list.txt",
+            "-o",
+            "out",
+            "-j",
+            "1",
+        ]
+        with unittest.mock.patch.object(sys, "argv", argv):
+            with self.assertRaises(SystemExit):
+                dispatch.parse_args()
+
+    def test_findings_list_conflicts(self):
+        argv = [
+            "dispatch.py",
+            "--phase-mode",
+            "--orchestrator-template",
+            "orch.txt",
+            "--findings-list",
+            "list.txt",
+            "--findings-workdir",
+            "wd",
+            "--tree-dirs",
+            "src",
+            "-o",
+            "out",
+            "-j",
+            "1",
+        ]
+        with unittest.mock.patch.object(sys, "argv", argv):
+            with self.assertRaises(SystemExit):
+                dispatch.parse_args()
+
+    def test_parse_findings_resume(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            argv = [
+                "dispatch.py",
+                "--phase-mode",
+                "--orchestrator-template",
+                "orch.txt",
+                "--findings-list",
+                "list.txt",
+                "--findings-workdir",
+                tmp,
+                "-o",
+                "out",
+                "-j",
+                "1",
+            ]
+            with unittest.mock.patch.object(sys, "argv", argv):
+                args = dispatch.parse_args()
+            self.assertEqual(args.findings_list, "list.txt")
+            self.assertEqual(args.findings_workdir, tmp)
+
 
 class TestWorkDirSelection(unittest.TestCase):
     def setUp(self):
