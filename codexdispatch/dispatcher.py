@@ -445,11 +445,10 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
             continue
         context = cache_entry.get("context", [])
         source = ""
-        work_dir = args.work_dir
+        work_dir = os.path.dirname(os.path.abspath(file_path))
         try:
             with open(file_path, "r", encoding="utf-8") as sf:
                 source = sf.read()
-            work_dir = os.path.dirname(os.path.abspath(file_path))
         except OSError:
             logging.warning("PhaseMode: unable to read %s", file_path)
 
@@ -489,9 +488,9 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
                 out_path,
                 "--dangerously-bypass-approvals-and-sandbox",
                 "--skip-git-repo-check",
+                "-C",
+                work_dir,
             ]
-            if work_dir:
-                cmd.extend(["-C", work_dir])
             try:
                 _invoke_codex(cmd, f"{finding_json}\n{inquiry}", args.timeout, finding_path)
             except subprocess.TimeoutExpired as te:
