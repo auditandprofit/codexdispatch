@@ -38,32 +38,44 @@ def openai_generate_response(
     service_tier: str = "flex",
     **extra: Any,
 ):
-    """Wrapper around ``client.chat.completions.create`` with defaults."""
+    """Wrapper around ``client.responses.create`` with defaults.
+
+    ``function_call`` is retained for compatibility but ignored as the
+    Responses API decides when to invoke tools.
+    """
     client = openai_configure_api()
     if client is None:
         raise RuntimeError("OpenAI client is not configured")
+
+    tools: List[Dict[str, Any]] = [{"type": "web_search"}]
+    if functions:
+        tools.extend({"type": "function", "function": f} for f in functions)
+
     params: Dict[str, Any] = {
         "model": model,
-        "messages": messages,
-        "reasoning_effort": reasoning_effort,
+        "input": messages,
+        "tools": tools,
+        "reasoning": {"effort": reasoning_effort},
         "service_tier": service_tier,
         **extra,
     }
-    if functions:
-        params["functions"] = functions
-        if function_call is not None:
-            params["function_call"] = function_call
+
     logging.info("Sending:\n%s", messages)
-    response = client.chat.completions.create(**params)
+    response = client.responses.create(**params)
     logging.info("Received:\n%s", response)
     return response
 
 
 def openai_parse_function_call(response: Any) -> Tuple[Optional[str], Any]:
-    """Extract function call data from a chat completion response."""
-    choice = response.choices[0] if response.choices else None
-    msg = getattr(choice, "message", None) if choice else None
-    fc = getattr(msg, "function_call", None) if msg else None
+    """Extract function call data from a Responses API result."""
+    output = getattr(response, "output", None)
+    msg = output[0] if output else None
+    content = getattr(msg, "content", []) if msg else []
+    fc = None
+    for item in content:
+        if getattr(item, "type", None) == "tool_call":
+            fc = item
+            break
     if not fc:
         return None, None
     name = getattr(fc, "name", None)
