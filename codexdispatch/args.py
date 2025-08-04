@@ -155,8 +155,40 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="recursively scan directory for paramtrace outputs",
     )
+    parser.add_argument(
+        "--phase-mode",
+        action="store_true",
+        default=False,
+        help="enable multi-phase processing using numbered templates",
+    )
+    parser.add_argument(
+        "--phase-templates",
+        dest="phase_templates",
+        default=None,
+        help="directory containing phase template files named 1,2,3,...",
+    )
+    parser.add_argument(
+        "--phase-workdir",
+        dest="phase_workdir",
+        default=None,
+        help="working directory for phases after the first",
+    )
+    parser.add_argument(
+        "--initial-files",
+        dest="initial_files",
+        default=None,
+        help="text file listing initial files or directories for phase mode",
+    )
     args = parser.parse_args()
     if args.scan_paramtrace:
+        return args
+    if args.phase_mode:
+        if not args.phase_templates or not args.initial_files:
+            parser.error("--phase-templates and --initial-files are required with --phase-mode")
+        if args.output_dir is None or args.workers is None:
+            parser.error("--output-dir and --workers are required")
+        if not args.phase_workdir:
+            parser.error("--phase-workdir is required with --phase-mode")
         return args
     if args.template is None:
         parser.error("template is required")
