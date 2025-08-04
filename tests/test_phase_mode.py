@@ -49,7 +49,10 @@ class TestPhaseModeWorkflow(unittest.TestCase):
             phase1_output = '{"finding": "x"}'
             inquiry_output = "resp"
 
+            captured_cmds: list[list[str]] = []
+
             def fake_invoke(cmd, prompt, timeout, path):
+                captured_cmds.append(list(cmd))
                 out = cmd[cmd.index("--output-last-message") + 1]
                 if "phase_1" in out:
                     with open(out, "w", encoding="utf-8") as fh:
@@ -60,7 +63,7 @@ class TestPhaseModeWorkflow(unittest.TestCase):
 
             orch_responses = [{"inquiry": "why?"}, {"conclusion": "valid"}]
 
-            def fake_orchestrator(template, context):
+            def fake_orchestrator(prompt):
                 return orch_responses.pop(0)
 
             with mock.patch("codexdispatch.dispatcher.find_codex_bin", fake_find_codex_bin), \
@@ -78,11 +81,25 @@ class TestPhaseModeWorkflow(unittest.TestCase):
             cache_dir = os.path.join(tmp, "cache")
             self.assertTrue(os.path.isdir(cache_dir))
             cache_files = os.listdir(cache_dir)
-            self.assertEqual(len(cache_files), 1)
-            with open(os.path.join(cache_dir, cache_files[0]), "r", encoding="utf-8") as cf:
+            self.assertIn("workdirs.json", cache_files)
+            hash_file = [f for f in cache_files if f != "workdirs.json"][0]
+            with open(os.path.join(cache_dir, hash_file), "r", encoding="utf-8") as cf:
                 data = json.load(cf)
             self.assertEqual(data["status"], "concluded")
             self.assertEqual(len(data["context"]), 1)
+            with open(os.path.join(cache_dir, "workdirs.json"), "r", encoding="utf-8") as wf:
+                wd_map = json.load(wf)
+            self.assertEqual(wd_map[phase1_path], os.path.dirname(src))
+            phase2_meta = phase2_path + ".meta"
+            self.assertTrue(os.path.exists(phase2_meta))
+            with open(phase2_meta, "r", encoding="utf-8") as mf:
+                meta = json.load(mf)
+            self.assertEqual(meta["inquiry"], "why?")
+            self.assertEqual(meta["response"], inquiry_output)
+            self.assertEqual(len(captured_cmds), 2)
+            second_cmd = captured_cmds[1]
+            self.assertIn("-C", second_cmd)
+            self.assertEqual(second_cmd[second_cmd.index("-C") + 1], os.path.dirname(src))
 
 
 if __name__ == "__main__":

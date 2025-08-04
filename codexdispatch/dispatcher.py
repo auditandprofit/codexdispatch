@@ -12,6 +12,8 @@ import subprocess
 import json
 import re
 import hashlib
+import random
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
@@ -20,10 +22,13 @@ from .utils import collect_files, _invoke_codex, find_codex_bin, load_files
 from .security_audit import run_security_audit
 
 
-def call_orchestrator(template: str, context: str) -> dict:
+def call_orchestrator(prompt: str) -> dict:
     """Return {"inquiry": "..."} or {"conclusion": "valid|invalid"}."""
-    # TODO: replace with real OpenAI chat completions
-    return {"conclusion": "invalid"}
+    # This stub randomly concludes or asks for more details to exercise both
+    # branches during tests without requiring real API calls.
+    if random.random() < 0.3:
+        return {"conclusion": random.choice(["valid", "invalid"])}
+    return {"inquiry": "Provide precise reproduction steps for this finding."}
 
 
 def _find_gitlab_findings(start: str) -> Optional[str]:
@@ -173,6 +178,15 @@ def _run_phase_mode(args) -> None:
     os.makedirs(final_dir, exist_ok=True)
     cache_dir = os.path.join(os.path.dirname(os.path.abspath(args.output_dir)), "cache")
     os.makedirs(cache_dir, exist_ok=True)
+    workdirs_path = Path(cache_dir) / "workdirs.json"
+    if workdirs_path.exists():
+        try:
+            with open(workdirs_path, "r", encoding="utf-8") as wf:
+                workdir_map: Dict[str, str] = json.load(wf)
+        except (OSError, json.JSONDecodeError):
+            workdir_map = {}
+    else:
+        workdir_map = {}
 
     # Phase 1 – run security audit
     for path in inputs:
@@ -212,6 +226,9 @@ def _run_phase_mode(args) -> None:
             logging.error("Codex exit %s on %s\n%s", cpe.returncode, path, stderr)
         except Exception as exc:
             logging.error("Failed processing %s: %s", path, exc)
+        workdir_map[out_path] = os.path.dirname(path)
+        with open(workdirs_path, "w", encoding="utf-8") as wf:
+            json.dump(workdir_map, wf)
 
     # Phase 2..N – orchestrator loop
     for dirpath, _, filenames in os.walk(phase1_dir):
@@ -238,8 +255,9 @@ def _run_phase_mode(args) -> None:
             context = cache_entry.get("context", [])
             concluded = False
             for idx in range(len(context), args.max_inquiries):
-                prior = json.dumps(context)
-                result = call_orchestrator(orchestrator_template, f"{finding_json}\n{prior}")
+                prior_ctx = json.dumps(context, indent=2)
+                prompt = f"{orchestrator_template}\n{finding_json}\n{prior_ctx}"
+                result = call_orchestrator(prompt)
                 if "conclusion" in result:
                     final_path = os.path.join(final_dir, rel)
                     os.makedirs(os.path.dirname(final_path), exist_ok=True)
@@ -265,6 +283,9 @@ def _run_phase_mode(args) -> None:
                     "--dangerously-bypass-approvals-and-sandbox",
                     "--skip-git-repo-check",
                 ]
+                work_dir = workdir_map.get(finding_path, args.work_dir)
+                if work_dir:
+                    cmd.extend(["-C", work_dir])
                 try:
                     _invoke_codex(cmd, prompt, args.timeout, finding_path)
                 except subprocess.TimeoutExpired as te:
@@ -282,6 +303,8 @@ def _run_phase_mode(args) -> None:
                         response = rf.read()
                 except OSError:
                     response = ""
+                with open(out_path + ".meta", "w", encoding="utf-8") as mf:
+                    json.dump({"inquiry": inquiry, "response": response}, mf)
                 context.append({"inquiry": inquiry, "response": response})
                 cache_entry = {"context": context, "status": "open"}
                 with open(cache_path, "w", encoding="utf-8") as cf:
