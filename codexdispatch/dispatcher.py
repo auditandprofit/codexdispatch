@@ -23,8 +23,13 @@ from .utils import collect_files, _invoke_codex, find_codex_bin, load_files
 from .security_audit import run_security_audit
 
 
-def call_orchestrator(prompt: str) -> dict:
+def call_orchestrator(prompt: str, env: dict[str, str] | None = None) -> dict:
     """Return {"inquiry": "..."} or {"conclusion": "valid|invalid", "summary": "..."}."""
+    if env:
+        old_env = os.environ.copy()
+        os.environ.update(env)
+    else:
+        old_env = None
     try:
         from . import openai_stub
 
@@ -77,6 +82,13 @@ def call_orchestrator(prompt: str) -> dict:
                 }
     except Exception as exc:  # pragma: no cover - fallback path
         logging.warning("call_orchestrator falling back to stub: %s", exc)
+    finally:
+        if old_env is not None:
+            for k in env or {}:
+                if k in old_env:
+                    os.environ[k] = old_env[k]
+                else:
+                    os.environ.pop(k, None)
     # This stub randomly concludes or asks for more details to exercise both
     # branches during tests without requiring real API calls.
     if random.random() < 0.3:
@@ -204,7 +216,7 @@ def _run_paramtrace_scan(path: str) -> None:
     print(json.dumps(matches, indent=2))
 
 
-def _run_phase_mode(args) -> None:
+def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> None:
     try:
         with open(args.orchestrator_template, "r", encoding="utf-8") as f:
             orchestrator_template = f.read()
@@ -342,7 +354,7 @@ def _run_phase_mode(args) -> None:
             for idx in range(len(context), args.max_inquiries):
                 prior_ctx = json.dumps(context, indent=2)
                 prompt = f"{orchestrator_template}\n{finding_json}\n{prior_ctx}"
-                result = call_orchestrator(prompt)
+                result = call_orchestrator(prompt, env=orchestrator_env)
                 if "conclusion" in result:
                     final_path = os.path.join(final_dir, rel)
                     os.makedirs(os.path.dirname(final_path), exist_ok=True)
