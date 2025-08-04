@@ -192,6 +192,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="minimum severity required for a vulnerability to be processed by the orchestrator in phase mode",
     )
+    parser.add_argument(
+        "--phase-root",
+        dest="phase_root",
+        default=None,
+        help="top-level directory to resolve vulnerability file paths in phase mode",
+    )
     args = parser.parse_args()
     if args.scan_paramtrace:
         return args
