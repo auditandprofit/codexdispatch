@@ -58,7 +58,11 @@ def call_orchestrator(prompt: str) -> dict:
             {"role": "user", "content": prompt},
         ]
         response = openai_stub.openai_generate_response(
-            messages=messages, functions=schema
+            messages=messages,
+            functions=schema,
+            model="o3",
+            service_tier="flex",
+            reasoning_effort="high",
         )
         name, data = openai_stub.openai_parse_function_call(response)
         if name == "orchestrator_decision" and isinstance(data, dict):
@@ -305,7 +309,7 @@ def _run_phase_mode(args) -> None:
 
     # Phase 2..N – orchestrator loop
     for dirpath, _, filenames in os.walk(phase1_dir):
-        for name in filenames:
+        for name in sorted(filenames):
             finding_path = os.path.join(dirpath, name)
             rel = os.path.relpath(finding_path, phase1_dir)
             cache_key = hashlib.sha256(finding_path.encode()).hexdigest()
