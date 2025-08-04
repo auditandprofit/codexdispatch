@@ -234,6 +234,66 @@ class TestPhaseModeWorkflow(unittest.TestCase):
 
             self.assertEqual(captured_env, {"FOO": "BAR"})
 
+    def test_min_severity_filter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            high = os.path.join(tmp, "high.json")
+            low = os.path.join(tmp, "low.json")
+            with open(high, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps({"finding": "a", "severity": "high"}))
+            with open(low, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps({"finding": "b", "severity": "low"}))
+            listfile = os.path.join(tmp, "findings.txt")
+            with open(listfile, "w", encoding="utf-8") as fh:
+                fh.write(high + "\n")
+                fh.write(low + "\n")
+            orch = os.path.join(tmp, "orch.txt")
+            with open(orch, "w", encoding="utf-8") as fh:
+                fh.write("orch")
+            outdir = os.path.join(tmp, "out")
+            os.mkdir(outdir)
+            workdir = os.path.join(tmp, "repo")
+            os.mkdir(workdir)
+            argv = [
+                "dispatch.py",
+                "--phase-mode",
+                "--orchestrator-template",
+                orch,
+                "--findings-list",
+                listfile,
+                "--findings-workdir",
+                workdir,
+                "-o",
+                outdir,
+                "-j",
+                "1",
+                "--min-severity",
+                "medium",
+            ]
+            with mock.patch.object(sys, "argv", argv):
+                args = dispatch.parse_args()
+
+            def fake_find_codex_bin(path):
+                return "codex"
+
+            orch_calls: list[str] = []
+
+            def fake_orchestrator(prompt, env=None):
+                orch_calls.append(prompt)
+                return {"conclusion": "valid", "summary": "ok"}
+
+            with mock.patch("codexdispatch.dispatcher.find_codex_bin", fake_find_codex_bin), \
+                mock.patch("codexdispatch.dispatcher.call_orchestrator", fake_orchestrator):
+                dispatcher._run_phase_mode(args)
+
+            self.assertEqual(len(orch_calls), 1)
+            final_dir = os.path.join(outdir, "final")
+            self.assertTrue(
+                os.path.exists(os.path.join(final_dir, os.path.basename(high)))
+            )
+            self.assertFalse(
+                os.path.exists(os.path.join(final_dir, os.path.basename(low)))
+            )
+
     def test_backtick_wrapped_findings_cleaned(self):
         with tempfile.TemporaryDirectory() as tmp:
             finding = os.path.join(tmp, "f.json")

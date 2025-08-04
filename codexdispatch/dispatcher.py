@@ -356,12 +356,12 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
                 continue
 
             try:
-                json.loads(finding_json)
+                finding_obj = json.loads(finding_json)
             except json.JSONDecodeError as exc:
                 cleaned = _strip_backticks(finding_json)
                 if cleaned != finding_json:
                     try:
-                        json.loads(cleaned)
+                        finding_obj = json.loads(cleaned)
                     except json.JSONDecodeError as exc2:
                         with open(error_log_path, "a", encoding="utf-8") as ef:
                             ef.write(f"{rel}: {exc2}\n")
@@ -372,6 +372,12 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
                 else:
                     with open(error_log_path, "a", encoding="utf-8") as ef:
                         ef.write(f"{rel}: {exc}\n")
+                    continue
+
+            if args.min_severity:
+                sev = finding_obj.get("severity")
+                ranks = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+                if sev is None or ranks.get(str(sev).lower(), -1) < ranks[args.min_severity]:
                     continue
 
             cache_entry = {"context": [], "status": "open"}

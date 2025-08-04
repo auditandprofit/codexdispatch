@@ -191,6 +191,13 @@ def parse_args() -> argparse.Namespace:
         default=3,
         help="cap on orchestrator and Codex iterations per finding",
     )
+    parser.add_argument(
+        "--min-severity",
+        dest="min_severity",
+        choices=["low", "medium", "high", "critical"],
+        default=None,
+        help="minimum severity required for a vulnerability to be processed by the orchestrator in phase mode",
+    )
     args = parser.parse_args()
     if args.scan_paramtrace:
         return args
@@ -226,6 +233,8 @@ def parse_args() -> argparse.Namespace:
         if args.output_dir is None or args.workers is None:
             parser.error("--output-dir and --workers are required")
         return args
+    if args.min_severity:
+        parser.error("--min-severity requires --phase-mode")
     if args.findings_list or args.findings_workdir:
         parser.error("--findings-list and --findings-workdir require --phase-mode")
     if args.template is None:
