@@ -345,7 +345,15 @@ class PhaseModeIntegration(unittest.TestCase):
                 out = cmd[cmd.index("--output-last-message") + 1]
                 os.makedirs(os.path.dirname(out), exist_ok=True)
                 with open(out, "w", encoding="utf-8") as fh:
-                    fh.write(json.dumps({"finding": "x"}))
+                    fh.write(
+                        json.dumps(
+                            {
+                                "vulnerabilities": [
+                                    {"id": "vA", "file_path": file_a}
+                                ]
+                            }
+                        )
+                    )
                 captured.append(out)
 
             def fake_orchestrator(prompt, env=None):
@@ -357,9 +365,14 @@ class PhaseModeIntegration(unittest.TestCase):
                 unittest.mock.patch("codexdispatch.dispatcher.call_orchestrator", side_effect=fake_orchestrator):
                 dispatch.main()
 
-            rel = os.path.splitdrive(os.path.abspath(file_a))[1].lstrip(os.sep) + "-codex"
-            self.assertTrue(os.path.exists(os.path.join(outdir, "phase_1", rel)))
-            self.assertTrue(os.path.exists(os.path.join(outdir, "final", rel)))
+            phase1_file = os.path.join(
+                outdir, "phase_1", f"vA_{os.path.basename(file_a)}.json"
+            )
+            self.assertTrue(os.path.exists(phase1_file))
+            verdicts_path = os.path.join(outdir, "final", "verdicts.json")
+            with open(verdicts_path, "r", encoding="utf-8") as vf:
+                verdicts = json.load(vf)
+            self.assertIn("vA", verdicts)
             self.assertEqual(len(captured), 1)
 
 
