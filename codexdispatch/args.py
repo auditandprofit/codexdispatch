@@ -159,36 +159,39 @@ def parse_args() -> argparse.Namespace:
         "--phase-mode",
         action="store_true",
         default=False,
-        help="enable multi-phase processing using numbered templates",
+        help="enable multi-phase processing using audit and orchestrator templates",
     )
     parser.add_argument(
-        "--phase-templates",
-        dest="phase_templates",
+        "--audit-template",
+        dest="audit_template",
         default=None,
-        help="directory containing phase template files named 1,2,3,...",
+        help="path to the security-audit Codex template",
     )
     parser.add_argument(
-        "--phase-workdir",
-        dest="phase_workdir",
+        "--orchestrator-template",
+        dest="orchestrator_template",
         default=None,
-        help="working directory for phases after the first",
+        help="path to the orchestrator chat-completion template",
     )
     parser.add_argument(
-        "--initial-files",
-        dest="initial_files",
-        default=None,
-        help="text file listing initial files or directories for phase mode",
+        "--max-inquiries",
+        dest="max_inquiries",
+        type=int,
+        default=3,
+        help="cap on orchestrator and Codex iterations per finding",
     )
     args = parser.parse_args()
     if args.scan_paramtrace:
         return args
     if args.phase_mode:
-        if not args.phase_templates or not args.initial_files:
-            parser.error("--phase-templates and --initial-files are required with --phase-mode")
+        if not args.audit_template or not args.orchestrator_template:
+            parser.error("--audit-template and --orchestrator-template are required with --phase-mode")
+        if not any([args.data_dir, args.tree_dirs, args.file_list, args.findings_json]):
+            parser.error(
+                "one of --data-dir, --tree-dirs, --file-list, or --findings-json is required"
+            )
         if args.output_dir is None or args.workers is None:
             parser.error("--output-dir and --workers are required")
-        if not args.phase_workdir:
-            parser.error("--phase-workdir is required with --phase-mode")
         return args
     if args.template is None:
         parser.error("template is required")
