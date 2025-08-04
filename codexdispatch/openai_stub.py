@@ -69,22 +69,42 @@ def openai_generate_response(
 
 
 def openai_parse_function_call(response: Any) -> Tuple[Optional[str], Any]:
-    """Extract function call data from a Responses API result."""
-    output = getattr(response, "output", None)
-    msg = output[0] if output else None
-    content = getattr(msg, "content", []) if msg else []
+    """Extract function call data from a Responses API result.
+
+    The Responses API evolved its schema in April 2025.  Newer models return
+    ``ResponseFunctionToolCall`` objects directly in ``response.output``
+    whereas older models nested the call inside the first message's
+    ``content`` list.  This helper now supports both layouts for
+    backward-compatibility.
+    """
+
     fc = None
-    for item in content:
-        if getattr(item, "type", None) == "tool_call":
+
+    # Newer schema: function/tool call objects are top-level ``output`` items.
+    for item in getattr(response, "output", []) or []:
+        if getattr(item, "type", None) in {"function_call", "tool_call"}:
             fc = item
             break
+
+    # Legacy schema: tool call lives inside ``content`` of the first message.
+    if not fc:
+        output = getattr(response, "output", None)
+        msg = output[0] if output else None
+        content = getattr(msg, "content", []) if msg else []
+        for item in content:
+            if getattr(item, "type", None) == "tool_call":
+                fc = item
+                break
+
     if not fc:
         return None, None
+
     name = getattr(fc, "name", None)
     args_str = getattr(fc, "arguments", "") or "{}"
     try:
         data = json.loads(args_str)
     except json.JSONDecodeError:
         data = {}
+
     logging.info("Function call %s with %s", name, data)
     return name, data
