@@ -11,12 +11,19 @@ import uuid
 import subprocess
 import json
 import re
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
 from .args import parse_args
 from .utils import collect_files, _invoke_codex, find_codex_bin, load_files
 from .security_audit import run_security_audit
+
+
+def call_orchestrator(template: str, context: str) -> dict:
+    """Return {"inquiry": "..."} or {"conclusion": "valid|invalid"}."""
+    # TODO: replace with real OpenAI chat completions
+    return {"conclusion": "invalid"}
 
 
 def _find_gitlab_findings(start: str) -> Optional[str]:
@@ -137,106 +144,156 @@ def _run_paramtrace_scan(path: str) -> None:
 
 
 def _run_phase_mode(args) -> None:
-    template_files = [f for f in os.listdir(args.phase_templates) if f.isdigit()]
-    phases = sorted(int(f) for f in template_files)
-    if not phases:
-        logging.error("PhaseMode: no templates found in %s", args.phase_templates)
+    try:
+        with open(args.audit_template, "r", encoding="utf-8") as f:
+            audit_template = f.read()
+        with open(args.orchestrator_template, "r", encoding="utf-8") as f:
+            orchestrator_template = f.read()
+    except OSError as exc:
+        logging.error("PhaseMode: failed reading template: %s", exc)
         return
 
-    with open(args.initial_files, "r", encoding="utf-8") as fh:
-        entries = [e.strip() for e in fh if e.strip() and not e.strip().startswith("#")]
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    codex_bin = find_codex_bin(args.codex_bin)
 
-    inputs: list[str] = []
-    for entry in entries:
-        if os.path.isdir(entry):
-            for dirpath, _, filenames in os.walk(entry):
-                for name in filenames:
-                    path = os.path.join(dirpath, name)
-                    if os.path.isfile(path):
-                        inputs.append(path)
-        elif os.path.isfile(entry):
-            inputs.append(entry)
-        else:
-            logging.warning("PhaseMode: missing path %s", entry)
+    if args.tree_dirs:
+        inputs = collect_files(args.tree_dirs, recursive=args.recursive)
+    elif args.data_dir:
+        inputs = load_files(args.data_dir)
+    elif args.file_list:
+        with open(args.file_list, "r", encoding="utf-8") as fh:
+            inputs = [p.strip() for p in fh if p.strip() and not p.strip().startswith("#")]
+    else:
+        inputs = []
 
     inputs = sorted(dict.fromkeys(inputs))
-    if not inputs:
-        logging.error("PhaseMode: no input files found")
-        return
+    phase1_dir = os.path.join(args.output_dir, "phase_1")
+    final_dir = os.path.join(args.output_dir, "final")
+    os.makedirs(phase1_dir, exist_ok=True)
+    os.makedirs(final_dir, exist_ok=True)
+    cache_dir = os.path.join(os.path.dirname(os.path.abspath(args.output_dir)), "cache")
+    os.makedirs(cache_dir, exist_ok=True)
 
-    codex_bin = find_codex_bin(args.codex_bin)
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-
-    first_phase = phases[0]
-    for phase in phases:
-        template_path = os.path.join(args.phase_templates, str(phase))
+    # Phase 1 – run security audit
+    for path in inputs:
         try:
-            with open(template_path, "r", encoding="utf-8") as tf:
-                template = tf.read()
+            with open(path, "r", encoding="utf-8") as f:
+                data = f.read()
+        except UnicodeDecodeError:
+            logging.warning("PhaseMode: skipping non-text file %s", path)
+            continue
         except OSError as exc:
-            logging.error("PhaseMode: failed reading template %s: %s", template_path, exc)
-            return
+            logging.error("PhaseMode: failed reading %s: %s", path, exc)
+            continue
+        full_path = os.path.abspath(path)
+        prompt = f"{audit_template}\n{full_path}\n{data}"
+        rel_path = os.path.splitdrive(full_path)[1].lstrip(os.sep)
+        if not rel_path.endswith("-codex"):
+            rel_path = f"{rel_path}-codex"
+        out_path = os.path.join(phase1_dir, rel_path)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        cmd = [
+            codex_bin,
+            "exec",
+            "--output-last-message",
+            out_path,
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--skip-git-repo-check",
+            "-C",
+            os.path.dirname(path),
+        ]
+        logging.info("PhaseMode: phase_1 file=%s -> %s", path, out_path)
+        try:
+            _invoke_codex(cmd, prompt, args.timeout, path)
+        except subprocess.TimeoutExpired as te:
+            logging.error("TIMEOUT after %ss on %s", te.timeout, path)
+        except subprocess.CalledProcessError as cpe:
+            stderr = (cpe.stderr or b"").decode(errors="ignore")
+            logging.error("Codex exit %s on %s\n%s", cpe.returncode, path, stderr)
+        except Exception as exc:
+            logging.error("Failed processing %s: %s", path, exc)
 
-        out_root = os.path.join(args.output_dir, str(phase))
-        os.makedirs(out_root, exist_ok=True)
-
-        def worker(path: str):
+    # Phase 2..N – orchestrator loop
+    for dirpath, _, filenames in os.walk(phase1_dir):
+        for name in filenames:
+            finding_path = os.path.join(dirpath, name)
+            rel = os.path.relpath(finding_path, phase1_dir)
+            cache_key = hashlib.sha256(finding_path.encode()).hexdigest()
+            cache_path = os.path.join(cache_dir, f"{cache_key}.json")
             try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = f.read()
-            except UnicodeDecodeError:
-                logging.warning("PhaseMode: skipping non-text file %s", path)
-                return None
+                with open(finding_path, "r", encoding="utf-8") as fh:
+                    finding_json = fh.read()
             except OSError as exc:
-                logging.error("PhaseMode: failed reading %s: %s", path, exc)
-                return None
-            full_path = os.path.abspath(path)
-            prompt = f"{template}\n{full_path}\n{data}"
-            rel_path = os.path.abspath(path)
-            rel_path = os.path.splitdrive(rel_path)[1].lstrip(os.sep)
-            if not rel_path.endswith("-codex"):
-                rel_path = f"{rel_path}-codex"
-            out_path = os.path.join(out_root, rel_path)
-            os.makedirs(os.path.dirname(out_path), exist_ok=True)
-            work_dir = os.path.dirname(path) if phase == first_phase else args.phase_workdir
-            cmd = [
-                codex_bin,
-                "exec",
-                "--output-last-message",
-                out_path,
-                "--dangerously-bypass-approvals-and-sandbox",
-                "--skip-git-repo-check",
-                "-C",
-                work_dir,
-            ]
-            logging.info(
-                "PhaseMode: phase=%s file=%s work_dir=%s -> %s",
-                phase,
-                path,
-                work_dir,
-                out_path,
-            )
-            try:
-                _invoke_codex(cmd, prompt, args.timeout, path)
-            except subprocess.TimeoutExpired as te:
-                logging.error("TIMEOUT after %ss on %s", te.timeout, path)
-                return None
-            except subprocess.CalledProcessError as cpe:
-                stderr = (cpe.stderr or b"").decode(errors="ignore")
-                logging.error("Codex exit %s on %s\n%s", cpe.returncode, path, stderr)
-                return None
-            except Exception as exc:
-                logging.error("Failed processing %s: %s", path, exc)
-                return None
-            return out_path
-
-        with ThreadPoolExecutor(max_workers=args.workers) as ex:
-            results = list(ex.map(worker, inputs))
-
-        inputs = [r for r in results if r]
-        if not inputs:
-            logging.info("PhaseMode: no outputs produced for phase %s", phase)
-            break
+                logging.error("PhaseMode: failed reading %s: %s", finding_path, exc)
+                continue
+            cache_entry = {"context": [], "status": "open"}
+            if os.path.exists(cache_path):
+                try:
+                    with open(cache_path, "r", encoding="utf-8") as cf:
+                        cache_entry = json.load(cf)
+                except (OSError, json.JSONDecodeError):
+                    pass
+            if cache_entry.get("status") == "concluded":
+                continue
+            context = cache_entry.get("context", [])
+            concluded = False
+            for idx in range(len(context), args.max_inquiries):
+                prior = json.dumps(context)
+                result = call_orchestrator(orchestrator_template, f"{finding_json}\n{prior}")
+                if "conclusion" in result:
+                    final_path = os.path.join(final_dir, rel)
+                    os.makedirs(os.path.dirname(final_path), exist_ok=True)
+                    with open(final_path, "w", encoding="utf-8") as fh:
+                        json.dump(result, fh)
+                    cache_entry = {"context": context, "status": "concluded"}
+                    with open(cache_path, "w", encoding="utf-8") as cf:
+                        json.dump(cache_entry, cf)
+                    concluded = True
+                    break
+                inquiry = result.get("inquiry")
+                if not inquiry:
+                    break
+                prompt = f"{finding_json}\n{inquiry}"
+                phase = idx + 2
+                out_path = os.path.join(args.output_dir, f"phase_{phase}", rel)
+                os.makedirs(os.path.dirname(out_path), exist_ok=True)
+                cmd = [
+                    codex_bin,
+                    "exec",
+                    "--output-last-message",
+                    out_path,
+                    "--dangerously-bypass-approvals-and-sandbox",
+                    "--skip-git-repo-check",
+                ]
+                try:
+                    _invoke_codex(cmd, prompt, args.timeout, finding_path)
+                except subprocess.TimeoutExpired as te:
+                    logging.error("TIMEOUT after %ss on inquiry %s", te.timeout, finding_path)
+                    break
+                except subprocess.CalledProcessError as cpe:
+                    stderr = (cpe.stderr or b"").decode(errors="ignore")
+                    logging.error("Codex exit %s on inquiry %s\n%s", cpe.returncode, finding_path, stderr)
+                    break
+                except Exception as exc:
+                    logging.error("Failed inquiry %s: %s", finding_path, exc)
+                    break
+                try:
+                    with open(out_path, "r", encoding="utf-8") as rf:
+                        response = rf.read()
+                except OSError:
+                    response = ""
+                context.append({"inquiry": inquiry, "response": response})
+                cache_entry = {"context": context, "status": "open"}
+                with open(cache_path, "w", encoding="utf-8") as cf:
+                    json.dump(cache_entry, cf)
+            if not concluded and cache_entry.get("status") != "concluded":
+                final_path = os.path.join(final_dir, rel)
+                os.makedirs(os.path.dirname(final_path), exist_ok=True)
+                with open(final_path, "w", encoding="utf-8") as fh:
+                    json.dump({"conclusion": "inconclusive"}, fh)
+                cache_entry = {"context": context, "status": "concluded"}
+                with open(cache_path, "w", encoding="utf-8") as cf:
+                    json.dump(cache_entry, cf)
 
 
 def _run_findings_mode(args) -> None:

@@ -146,11 +146,11 @@ class TestParseArgs(unittest.TestCase):
         argv = [
             "dispatch.py",
             "--phase-mode",
-            "--phase-templates",
-            "tmpldir",
-            "--phase-workdir",
-            "wd",
-            "--initial-files",
+            "--audit-template",
+            "audit.txt",
+            "--orchestrator-template",
+            "orch.txt",
+            "--file-list",
             "files.txt",
             "-o",
             "out",
@@ -160,9 +160,10 @@ class TestParseArgs(unittest.TestCase):
         with unittest.mock.patch.object(sys, "argv", argv):
             args = dispatch.parse_args()
         self.assertTrue(args.phase_mode)
-        self.assertEqual(args.phase_templates, "tmpldir")
-        self.assertEqual(args.phase_workdir, "wd")
-        self.assertEqual(args.initial_files, "files.txt")
+        self.assertEqual(args.audit_template, "audit.txt")
+        self.assertEqual(args.orchestrator_template, "orch.txt")
+        self.assertEqual(args.file_list, "files.txt")
+        self.assertEqual(args.max_inquiries, 3)
 
 
 class TestWorkDirSelection(unittest.TestCase):
@@ -270,64 +271,60 @@ class PerFileWorkDirIntegration(unittest.TestCase):
 
 
 class PhaseModeIntegration(unittest.TestCase):
-    def test_phase_mode_two_phases(self):
+    def test_phase_mode_simple(self):
         with tempfile.TemporaryDirectory() as tmp:
-            tmpl_dir = os.path.join(tmp, "tmpl")
-            os.mkdir(tmpl_dir)
-            with open(os.path.join(tmpl_dir, "1"), "w", encoding="utf-8") as f:
+            audit = os.path.join(tmp, "audit.txt")
+            with open(audit, "w", encoding="utf-8") as f:
                 f.write("T1")
-            with open(os.path.join(tmpl_dir, "2"), "w", encoding="utf-8") as f:
+            orch = os.path.join(tmp, "orch.txt")
+            with open(orch, "w", encoding="utf-8") as f:
                 f.write("T2")
             file_a = os.path.join(tmp, "a.txt")
             with open(file_a, "w", encoding="utf-8") as f:
                 f.write("A")
-            subdir = os.path.join(tmp, "sub")
-            os.mkdir(subdir)
-            file_b = os.path.join(subdir, "b.txt")
-            with open(file_b, "w", encoding="utf-8") as f:
-                f.write("B")
             lst = os.path.join(tmp, "list.txt")
             with open(lst, "w", encoding="utf-8") as f:
-                f.write(file_a + "\n" + subdir + "\n")
+                f.write(file_a + "\n")
             outdir = os.path.join(tmp, "out")
             os.mkdir(outdir)
-            phase_wd = os.path.join(tmp, "wd")
-            os.mkdir(phase_wd)
 
             argv = [
                 "dispatch.py",
                 "--phase-mode",
-                "--phase-templates",
-                tmpl_dir,
-                "--phase-workdir",
-                phase_wd,
-                "--initial-files",
+                "--audit-template",
+                audit,
+                "--orchestrator-template",
+                orch,
+                "--file-list",
                 lst,
                 "-o",
                 outdir,
                 "-j",
                 "1",
             ]
-            captured: dict[str, str] = {}
+
+            captured: list[str] = []
 
             def fake_invoke(cmd, prompt, timeout, path):
                 out = cmd[cmd.index("--output-last-message") + 1]
                 os.makedirs(os.path.dirname(out), exist_ok=True)
                 with open(out, "w", encoding="utf-8") as fh:
                     fh.write("X")
-                captured[path] = cmd[cmd.index("-C") + 1]
+                captured.append(out)
+
+            def fake_orchestrator(template, context):
+                return {"conclusion": "valid"}
 
             with unittest.mock.patch.object(sys, "argv", argv), \
                 unittest.mock.patch("codexdispatch.dispatcher.find_codex_bin", return_value="codex"), \
-                unittest.mock.patch("codexdispatch.dispatcher._invoke_codex", side_effect=fake_invoke):
+                unittest.mock.patch("codexdispatch.dispatcher._invoke_codex", side_effect=fake_invoke), \
+                unittest.mock.patch("codexdispatch.dispatcher.call_orchestrator", side_effect=fake_orchestrator):
                 dispatch.main()
 
-            out_a = os.path.join(outdir, "1", os.path.abspath(file_a).lstrip(os.sep) + "-codex")
-            out_b = os.path.join(outdir, "1", os.path.abspath(file_b).lstrip(os.sep) + "-codex")
-            self.assertEqual(captured[file_a], os.path.dirname(file_a))
-            self.assertEqual(captured[file_b], os.path.dirname(file_b))
-            self.assertEqual(captured[out_a], phase_wd)
-            self.assertEqual(captured[out_b], phase_wd)
+            rel = os.path.splitdrive(os.path.abspath(file_a))[1].lstrip(os.sep) + "-codex"
+            self.assertTrue(os.path.exists(os.path.join(outdir, "phase_1", rel)))
+            self.assertTrue(os.path.exists(os.path.join(outdir, "final", rel)))
+            self.assertEqual(len(captured), 1)
 
 
 class DispatchIntegration(unittest.TestCase):
