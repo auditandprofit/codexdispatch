@@ -16,7 +16,6 @@ import shutil
 import inspect
 import time
 import openai
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
@@ -273,16 +272,6 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
     error_log_path = os.path.join(phase1_dir, "parse_errors.log")
     cache_dir = os.path.join(os.path.dirname(os.path.abspath(args.output_dir)), "cache")
     os.makedirs(cache_dir, exist_ok=True)
-    workdirs_path = Path(cache_dir) / "workdirs.json"
-    if workdirs_path.exists():
-        try:
-            with open(workdirs_path, "r", encoding="utf-8") as wf:
-                workdir_map: Dict[str, str] = json.load(wf)
-        except (OSError, json.JSONDecodeError):
-            workdir_map = {}
-    else:
-        workdir_map = {}
-
     if args.findings_list:
         try:
             with open(args.findings_list, "r", encoding="utf-8") as fh:
@@ -307,9 +296,6 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
             except OSError as exc:
                 logging.error("PhaseMode: failed copying %s: %s", src, exc)
                 continue
-            workdir_map[dest] = args.findings_workdir
-        with open(workdirs_path, "w", encoding="utf-8") as wf:
-            json.dump(workdir_map, wf)
     else:
         if args.tree_dirs:
             inputs = collect_files(args.tree_dirs, recursive=args.recursive)
@@ -360,9 +346,6 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
                 logging.error("Codex exit %s on %s\n%s", cpe.returncode, path, stderr)
             except Exception as exc:
                 logging.error("Failed processing %s: %s", path, exc)
-            workdir_map[out_path] = os.path.dirname(path)
-            with open(workdirs_path, "w", encoding="utf-8") as wf:
-                json.dump(workdir_map, wf)
 
     # Phase 2..N – orchestrator loop
     for dirpath, _, filenames in os.walk(phase1_dir):
@@ -402,6 +385,11 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
                 ranks = {"low": 0, "medium": 1, "high": 2, "critical": 3}
                 if sev is None or ranks.get(str(sev).lower(), -1) < ranks[args.min_severity]:
                     continue
+
+            file_path = finding_obj.get("file_path")
+            default_work_dir = (
+                os.path.dirname(os.path.abspath(file_path)) if file_path else args.work_dir
+            )
 
             cache_entry = {"context": [], "status": "open"}
             if os.path.exists(cache_path):
@@ -443,7 +431,7 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
                     "--dangerously-bypass-approvals-and-sandbox",
                     "--skip-git-repo-check",
                 ]
-                work_dir = workdir_map.get(finding_path, args.work_dir)
+                work_dir = default_work_dir
                 if work_dir:
                     cmd.extend(["-C", work_dir])
                 try:
