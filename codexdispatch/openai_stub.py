@@ -50,7 +50,7 @@ def openai_generate_response(
     tools: List[Dict[str, Any]] = [{"type": "web_search"}]
     if functions:
         tools.extend(
-            {"type": "function", "function": f} for f in functions
+            {"type": "function", **f} for f in functions
         )
 
     params: Dict[str, Any] = {

@@ -107,5 +107,6 @@ class TestGenerateResponse(unittest.TestCase):
         tools = captured.get("tools", [])
         self.assertEqual(tools[0], {"type": "web_search"})
         self.assertEqual(tools[1]["type"], "function")
-        self.assertEqual(tools[1]["function"]["name"], "helper")
-        self.assertNotIn("name", tools[1])
+        self.assertEqual(tools[1]["name"], "helper")
+        self.assertEqual(tools[1]["parameters"], {})
+        self.assertNotIn("function", tools[1])
