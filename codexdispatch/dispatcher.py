@@ -25,6 +25,49 @@ from .security_audit import run_security_audit
 
 def call_orchestrator(prompt: str) -> dict:
     """Return {"inquiry": "..."} or {"conclusion": "valid|invalid"}."""
+    try:
+        from . import openai_stub
+
+        schema = [
+            {
+                "name": "orchestrator_decision",
+                "description": "Ask for more information or conclude the audit.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "inquiry": {"type": "string"},
+                        "conclusion": {
+                            "type": "string",
+                            "enum": ["valid", "invalid"],
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            }
+        ]
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a security audit orchestrator. Use the"
+                    " orchestrator_decision function to either request"
+                    " further details or conclude whether the finding is"
+                    " valid or invalid."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ]
+        response = openai_stub.openai_generate_response(
+            messages=messages, functions=schema
+        )
+        name, data = openai_stub.openai_parse_function_call(response)
+        if name == "orchestrator_decision" and isinstance(data, dict):
+            if "inquiry" in data:
+                return {"inquiry": data["inquiry"]}
+            if "conclusion" in data:
+                return {"conclusion": data["conclusion"]}
+    except Exception as exc:  # pragma: no cover - fallback path
+        logging.warning("call_orchestrator falling back to stub: %s", exc)
     # This stub randomly concludes or asks for more details to exercise both
     # branches during tests without requiring real API calls.
     if random.random() < 0.3:
