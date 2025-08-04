@@ -371,7 +371,7 @@ class PhaseModeIntegration(unittest.TestCase):
                     fh.write("X")
                 captured.append(out)
 
-            def fake_orchestrator(prompt):
+            def fake_orchestrator(prompt, env=None):
                 return {"conclusion": "valid", "summary": "done"}
 
             with unittest.mock.patch.object(sys, "argv", argv), \

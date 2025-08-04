@@ -64,7 +64,7 @@ class TestPhaseModeWorkflow(unittest.TestCase):
 
             orch_responses = [{"inquiry": "why?"}, {"conclusion": "valid", "summary": "done"}]
 
-            def fake_orchestrator(prompt):
+            def fake_orchestrator(prompt, env=None):
                 return orch_responses.pop(0)
 
             with mock.patch("codexdispatch.dispatcher.find_codex_bin", fake_find_codex_bin), \
@@ -156,7 +156,7 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 {"conclusion": "invalid", "summary": "oops"},
             ]
 
-            def fake_orchestrator(prompt):
+            def fake_orchestrator(prompt, env=None):
                 return orch_responses.pop(0)
 
             with mock.patch("codexdispatch.dispatcher.find_codex_bin", fake_find_codex_bin), \
@@ -182,6 +182,57 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 wd_map[os.path.join(phase1_dir, os.path.basename(f1))], workdir
             )
             self.assertEqual(len(captured_cmds), 1)
+
+    def test_orchestrator_env_forwarded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            finding = os.path.join(tmp, "f.json")
+            with open(finding, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps({"finding": "x"}))
+            listfile = os.path.join(tmp, "findings.txt")
+            with open(listfile, "w", encoding="utf-8") as fh:
+                fh.write(finding + "\n")
+            orch = os.path.join(tmp, "orch.txt")
+            with open(orch, "w", encoding="utf-8") as fh:
+                fh.write("orch")
+            outdir = os.path.join(tmp, "out")
+            os.mkdir(outdir)
+            workdir = os.path.join(tmp, "repo")
+            os.mkdir(workdir)
+            argv = [
+                "dispatch.py",
+                "--phase-mode",
+                "--orchestrator-template",
+                orch,
+                "--findings-list",
+                listfile,
+                "--findings-workdir",
+                workdir,
+                "-o",
+                outdir,
+                "-j",
+                "1",
+            ]
+            with mock.patch.object(sys, "argv", argv):
+                args = dispatch.parse_args()
+
+            captured_env: dict[str, str] = {}
+
+            def fake_find_codex_bin(path):
+                return "codex"
+
+            def fake_invoke(cmd, prompt, timeout, path):
+                pass
+
+            def fake_orchestrator(prompt, env=None):
+                captured_env.update(env or {})
+                return {"conclusion": "valid", "summary": "done"}
+
+            with mock.patch("codexdispatch.dispatcher.find_codex_bin", fake_find_codex_bin), \
+                mock.patch("codexdispatch.dispatcher._invoke_codex", fake_invoke), \
+                mock.patch("codexdispatch.dispatcher.call_orchestrator", fake_orchestrator):
+                dispatcher._run_phase_mode(args, orchestrator_env={"FOO": "BAR"})
+
+            self.assertEqual(captured_env, {"FOO": "BAR"})
 
     def test_cache_resume(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -228,7 +279,7 @@ class TestPhaseModeWorkflow(unittest.TestCase):
 
             orch_responses = [{"inquiry": "why?"}]
 
-            def first_orchestrator(prompt):
+            def first_orchestrator(prompt, env=None):
                 if orch_responses:
                     return orch_responses.pop(0)
                 raise IndexError
@@ -252,7 +303,7 @@ class TestPhaseModeWorkflow(unittest.TestCase):
 
             orch_responses2 = [{"conclusion": "valid", "summary": "done"}]
 
-            def second_orchestrator(prompt):
+            def second_orchestrator(prompt, env=None):
                 return orch_responses2.pop(0)
 
             captured_cmds2: list[list[str]] = []

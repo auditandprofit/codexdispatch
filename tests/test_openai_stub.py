@@ -1,4 +1,5 @@
 import json
+import os
 import types
 import unittest
 from unittest import mock
@@ -28,3 +29,19 @@ class TestCallOrchestrator(unittest.TestCase):
         self.assertEqual(kwargs["model"], "o3")
         self.assertEqual(kwargs["service_tier"], "flex")
         self.assertEqual(kwargs["reasoning_effort"], "high")
+
+    def test_env_is_passed(self):
+        captured = {}
+
+        def fake_generate_response(**kwargs):
+            captured["val"] = os.environ.get("TEST_KEY")
+            return types.SimpleNamespace(output=[])
+
+        with mock.patch(
+            "codexdispatch.openai_stub.openai_generate_response",
+            side_effect=fake_generate_response,
+        ):
+            dispatcher.call_orchestrator("prompt", env={"TEST_KEY": "VAL"})
+
+        self.assertEqual(captured.get("val"), "VAL")
+        self.assertNotIn("TEST_KEY", os.environ)
