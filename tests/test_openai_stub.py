@@ -8,13 +8,13 @@ import codexdispatch.dispatcher as dispatcher
 
 class TestCallOrchestrator(unittest.TestCase):
     def test_uses_openai_stub(self):
-        fc = types.SimpleNamespace(
+        item = types.SimpleNamespace(
+            type="tool_call",
             name="orchestrator_decision",
             arguments=json.dumps({"conclusion": "valid", "summary": "done"}),
         )
-        msg = types.SimpleNamespace(function_call=fc)
-        choice = types.SimpleNamespace(message=msg)
-        mock_response = types.SimpleNamespace(choices=[choice])
+        msg = types.SimpleNamespace(content=[item])
+        mock_response = types.SimpleNamespace(output=[msg])
 
         with mock.patch(
             "codexdispatch.openai_stub.openai_generate_response",
