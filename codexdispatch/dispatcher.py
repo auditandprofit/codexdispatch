@@ -62,6 +62,65 @@ def _strip_backticks(text: str) -> str:
     return text
 
 
+def _split_phase1_findings(phase1_dir: str) -> None:
+    """Split consolidated findings into one file per vulnerability.
+
+    ``phase_1`` outputs may contain a ``vulnerabilities`` array with multiple
+    vulnerability objects.  Each object is written to ``phase_1`` as
+    ``<id>_<orig-file>.json`` where ``orig-file`` is derived from the
+    vulnerability's ``file_path`` (falling back to the source filename).
+    The original findings files are removed after splitting.
+    """
+
+    to_delete: list[str] = []
+    for dirpath, _, filenames in os.walk(phase1_dir):
+        for name in filenames:
+            path = os.path.join(dirpath, name)
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+            except (OSError, json.JSONDecodeError):
+                continue
+            vulns = []
+            if isinstance(data, list):
+                vulns = data
+            elif isinstance(data, dict):
+                for key in ("vulnerabilities", "findings"):
+                    if isinstance(data.get(key), list):
+                        vulns = data[key]
+                        break
+                else:
+                    continue
+            else:
+                continue
+            for vuln in vulns:
+                vid = str(vuln.get("id")) if isinstance(vuln, dict) else None
+                if not vid:
+                    continue
+                orig = os.path.basename(vuln.get("file_path") or name)
+                out_name = f"{vid}_{orig}.json"
+                out_path = os.path.join(phase1_dir, out_name)
+                try:
+                    with open(out_path, "w", encoding="utf-8") as ofh:
+                        json.dump(vuln, ofh)
+                except OSError:
+                    continue
+            to_delete.append(path)
+    for path in to_delete:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    for dirpath, dirnames, filenames in os.walk(phase1_dir, topdown=False):
+        if dirpath == phase1_dir:
+            continue
+        if not dirnames and not filenames:
+            try:
+                os.rmdir(dirpath)
+            except OSError:
+                pass
+
+
 def call_orchestrator(prompt: str, env: dict[str, str] | None = None) -> dict:
     """Return {"inquiry": "..."} or {"conclusion": "valid|invalid", "summary": "..."}."""
     if env:
@@ -269,7 +328,6 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
     final_dir = os.path.join(args.output_dir, "final")
     os.makedirs(phase1_dir, exist_ok=True)
     os.makedirs(final_dir, exist_ok=True)
-    error_log_path = os.path.join(phase1_dir, "parse_errors.log")
     cache_dir = os.path.join(os.path.dirname(os.path.abspath(args.output_dir)), "cache")
     os.makedirs(cache_dir, exist_ok=True)
     if args.findings_list:
@@ -347,124 +405,139 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
             except Exception as exc:
                 logging.error("Failed processing %s: %s", path, exc)
 
+    # Split phase_1 outputs into per-vulnerability files
+    _split_phase1_findings(phase1_dir)
+
+    verdicts: dict[str, dict] = {}
+
     # Phase 2..N – orchestrator loop
-    for dirpath, _, filenames in os.walk(phase1_dir):
-        for name in sorted(filenames):
-            finding_path = os.path.join(dirpath, name)
-            rel = os.path.relpath(finding_path, phase1_dir)
-            cache_key = hashlib.sha256(finding_path.encode()).hexdigest()
-            cache_path = os.path.join(cache_dir, f"{cache_key}.json")
-            try:
-                with open(finding_path, "r", encoding="utf-8") as fh:
-                    finding_json = fh.read()
-            except OSError as exc:
-                logging.error("PhaseMode: failed reading %s: %s", finding_path, exc)
+    for name in sorted(f for f in os.listdir(phase1_dir) if f.endswith(".json")):
+        finding_path = os.path.join(phase1_dir, name)
+        try:
+            with open(finding_path, "r", encoding="utf-8") as fh:
+                finding_obj = json.load(fh)
+        except (OSError, json.JSONDecodeError) as exc:
+            logging.error("PhaseMode: failed reading %s: %s", finding_path, exc)
+            continue
+        if args.min_severity:
+            sev = finding_obj.get("severity")
+            ranks = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+            if sev is None or ranks.get(str(sev).lower(), -1) < ranks[args.min_severity]:
                 continue
 
+        vuln_id = str(finding_obj.get("id"))
+        file_path = finding_obj.get("file_path")
+        if not file_path:
+            logging.warning("PhaseMode: skipping vuln %s without file_path", vuln_id)
+            continue
+        severity = finding_obj.get("severity")
+        cache_key_src = f"{vuln_id}:{file_path}"
+        cache_key = hashlib.sha256(cache_key_src.encode()).hexdigest()
+        cache_path = os.path.join(cache_dir, f"{cache_key}.json")
+        cache_entry = {"context": [], "status": "open"}
+        if os.path.exists(cache_path):
             try:
-                finding_obj = json.loads(finding_json)
-            except json.JSONDecodeError as exc:
-                cleaned = _strip_backticks(finding_json)
-                if cleaned != finding_json:
-                    try:
-                        finding_obj = json.loads(cleaned)
-                    except json.JSONDecodeError as exc2:
-                        with open(error_log_path, "a", encoding="utf-8") as ef:
-                            ef.write(f"{rel}: {exc2}\n")
-                        continue
-                    with open(finding_path, "w", encoding="utf-8") as fh:
-                        fh.write(cleaned)
-                    finding_json = cleaned
-                else:
-                    with open(error_log_path, "a", encoding="utf-8") as ef:
-                        ef.write(f"{rel}: {exc}\n")
-                    continue
+                with open(cache_path, "r", encoding="utf-8") as cf:
+                    cache_entry = json.load(cf)
+            except (OSError, json.JSONDecodeError):
+                pass
+        if cache_entry.get("status") == "concluded":
+            continue
+        context = cache_entry.get("context", [])
+        source = ""
+        work_dir = args.work_dir
+        try:
+            with open(file_path, "r", encoding="utf-8") as sf:
+                source = sf.read()
+            work_dir = os.path.dirname(os.path.abspath(file_path))
+        except OSError:
+            logging.warning("PhaseMode: unable to read %s", file_path)
 
-            if args.min_severity:
-                sev = finding_obj.get("severity")
-                ranks = {"low": 0, "medium": 1, "high": 2, "critical": 3}
-                if sev is None or ranks.get(str(sev).lower(), -1) < ranks[args.min_severity]:
-                    continue
-
-            file_path = finding_obj.get("file_path")
-            default_work_dir = (
-                os.path.dirname(os.path.abspath(file_path)) if file_path else args.work_dir
-            )
-
-            cache_entry = {"context": [], "status": "open"}
-            if os.path.exists(cache_path):
-                try:
-                    with open(cache_path, "r", encoding="utf-8") as cf:
-                        cache_entry = json.load(cf)
-                except (OSError, json.JSONDecodeError):
-                    pass
-            if cache_entry.get("status") == "concluded":
-                continue
-            context = cache_entry.get("context", [])
-            concluded = False
-            for idx in range(len(context), args.max_inquiries):
-                prior_ctx = json.dumps(context, indent=2)
-                prompt = f"{orchestrator_template}\n{finding_json}\n{prior_ctx}"
-                result = call_orchestrator(prompt, env=orchestrator_env)
-                if "conclusion" in result:
-                    final_path = os.path.join(final_dir, rel)
-                    os.makedirs(os.path.dirname(final_path), exist_ok=True)
-                    with open(final_path, "w", encoding="utf-8") as fh:
-                        json.dump(result, fh)
-                    cache_entry = {"context": context, "status": "concluded"}
-                    with open(cache_path, "w", encoding="utf-8") as cf:
-                        json.dump(cache_entry, cf)
-                    concluded = True
-                    break
-                inquiry = result.get("inquiry")
-                if not inquiry:
-                    break
-                prompt = f"{finding_json}\n{inquiry}"
-                phase = idx + 2
-                out_path = os.path.join(args.output_dir, f"phase_{phase}", rel)
-                os.makedirs(os.path.dirname(out_path), exist_ok=True)
-                cmd = [
-                    codex_bin,
-                    "exec",
-                    "--output-last-message",
-                    out_path,
-                    "--dangerously-bypass-approvals-and-sandbox",
-                    "--skip-git-repo-check",
-                ]
-                work_dir = default_work_dir
-                if work_dir:
-                    cmd.extend(["-C", work_dir])
-                try:
-                    _invoke_codex(cmd, prompt, args.timeout, finding_path)
-                except subprocess.TimeoutExpired as te:
-                    logging.error("TIMEOUT after %ss on inquiry %s", te.timeout, finding_path)
-                    break
-                except subprocess.CalledProcessError as cpe:
-                    stderr = (cpe.stderr or b"").decode(errors="ignore")
-                    logging.error("Codex exit %s on inquiry %s\n%s", cpe.returncode, finding_path, stderr)
-                    break
-                except Exception as exc:
-                    logging.error("Failed inquiry %s: %s", finding_path, exc)
-                    break
-                try:
-                    with open(out_path, "r", encoding="utf-8") as rf:
-                        response = rf.read()
-                except OSError:
-                    response = ""
-                with open(out_path + ".meta", "w", encoding="utf-8") as mf:
-                    json.dump({"inquiry": inquiry, "response": response}, mf)
-                context.append({"inquiry": inquiry, "response": response})
-                cache_entry = {"context": context, "status": "open"}
-                with open(cache_path, "w", encoding="utf-8") as cf:
-                    json.dump(cache_entry, cf)
-            if not concluded and cache_entry.get("status") != "concluded":
-                final_path = os.path.join(final_dir, rel)
+        finding_json = json.dumps(finding_obj, indent=2)
+        concluded = False
+        for idx in range(len(context), args.max_inquiries):
+            prior_ctx = json.dumps(context, indent=2)
+            prompt = f"{orchestrator_template}\n{finding_json}\n{source}\n{prior_ctx}"
+            result = call_orchestrator(prompt, env=orchestrator_env)
+            if "conclusion" in result:
+                depth = len(context) + 1
+                final_path = os.path.join(final_dir, name)
                 os.makedirs(os.path.dirname(final_path), exist_ok=True)
                 with open(final_path, "w", encoding="utf-8") as fh:
-                    json.dump({"conclusion": "inconclusive"}, fh)
+                    json.dump(result, fh)
+                verdicts[vuln_id] = {
+                    "file_path": file_path,
+                    "conclusion": result.get("conclusion"),
+                    "severity": severity,
+                    "depth": depth,
+                }
                 cache_entry = {"context": context, "status": "concluded"}
                 with open(cache_path, "w", encoding="utf-8") as cf:
                     json.dump(cache_entry, cf)
+                concluded = True
+                break
+            inquiry = result.get("inquiry")
+            if not inquiry:
+                break
+            phase = idx + 2
+            out_path = os.path.join(args.output_dir, f"phase_{phase}", name)
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            cmd = [
+                codex_bin,
+                "exec",
+                "--output-last-message",
+                out_path,
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--skip-git-repo-check",
+            ]
+            if work_dir:
+                cmd.extend(["-C", work_dir])
+            try:
+                _invoke_codex(cmd, f"{finding_json}\n{inquiry}", args.timeout, finding_path)
+            except subprocess.TimeoutExpired as te:
+                logging.error("TIMEOUT after %ss on inquiry %s", te.timeout, finding_path)
+                break
+            except subprocess.CalledProcessError as cpe:
+                stderr = (cpe.stderr or b"").decode(errors="ignore")
+                logging.error(
+                    "Codex exit %s on inquiry %s\n%s", cpe.returncode, finding_path, stderr
+                )
+                break
+            except Exception as exc:
+                logging.error("Failed inquiry %s: %s", finding_path, exc)
+                break
+            try:
+                with open(out_path, "r", encoding="utf-8") as rf:
+                    response = rf.read()
+            except OSError:
+                response = ""
+            with open(out_path + ".meta", "w", encoding="utf-8") as mf:
+                json.dump({"inquiry": inquiry, "response": response}, mf)
+            context.append({"inquiry": inquiry, "response": response})
+            cache_entry = {"context": context, "status": "open"}
+            with open(cache_path, "w", encoding="utf-8") as cf:
+                json.dump(cache_entry, cf)
+        if not concluded and cache_entry.get("status") != "concluded":
+            depth = len(context)
+            final_path = os.path.join(final_dir, name)
+            os.makedirs(os.path.dirname(final_path), exist_ok=True)
+            with open(final_path, "w", encoding="utf-8") as fh:
+                json.dump({"conclusion": "inconclusive"}, fh)
+            verdicts[vuln_id] = {
+                "file_path": file_path,
+                "conclusion": "inconclusive",
+                "severity": severity,
+                "depth": depth,
+            }
+            cache_entry = {"context": context, "status": "concluded"}
+            with open(cache_path, "w", encoding="utf-8") as cf:
+                json.dump(cache_entry, cf)
+
+    if verdicts:
+        os.makedirs(final_dir, exist_ok=True)
+        verdict_path = os.path.join(final_dir, "verdicts.json")
+        with open(verdict_path, "w", encoding="utf-8") as vf:
+            json.dump(verdicts, vf)
 
 
 def _run_findings_mode(args) -> None:
