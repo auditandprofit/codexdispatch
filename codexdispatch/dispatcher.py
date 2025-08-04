@@ -136,6 +136,109 @@ def _run_paramtrace_scan(path: str) -> None:
     print(json.dumps(matches, indent=2))
 
 
+def _run_phase_mode(args) -> None:
+    template_files = [f for f in os.listdir(args.phase_templates) if f.isdigit()]
+    phases = sorted(int(f) for f in template_files)
+    if not phases:
+        logging.error("PhaseMode: no templates found in %s", args.phase_templates)
+        return
+
+    with open(args.initial_files, "r", encoding="utf-8") as fh:
+        entries = [e.strip() for e in fh if e.strip() and not e.strip().startswith("#")]
+
+    inputs: list[str] = []
+    for entry in entries:
+        if os.path.isdir(entry):
+            for dirpath, _, filenames in os.walk(entry):
+                for name in filenames:
+                    path = os.path.join(dirpath, name)
+                    if os.path.isfile(path):
+                        inputs.append(path)
+        elif os.path.isfile(entry):
+            inputs.append(entry)
+        else:
+            logging.warning("PhaseMode: missing path %s", entry)
+
+    inputs = sorted(dict.fromkeys(inputs))
+    if not inputs:
+        logging.error("PhaseMode: no input files found")
+        return
+
+    codex_bin = find_codex_bin(args.codex_bin)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    first_phase = phases[0]
+    for phase in phases:
+        template_path = os.path.join(args.phase_templates, str(phase))
+        try:
+            with open(template_path, "r", encoding="utf-8") as tf:
+                template = tf.read()
+        except OSError as exc:
+            logging.error("PhaseMode: failed reading template %s: %s", template_path, exc)
+            return
+
+        out_root = os.path.join(args.output_dir, str(phase))
+        os.makedirs(out_root, exist_ok=True)
+
+        def worker(path: str):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = f.read()
+            except UnicodeDecodeError:
+                logging.warning("PhaseMode: skipping non-text file %s", path)
+                return None
+            except OSError as exc:
+                logging.error("PhaseMode: failed reading %s: %s", path, exc)
+                return None
+            full_path = os.path.abspath(path)
+            prompt = f"{template}\n{full_path}\n{data}"
+            rel_path = os.path.abspath(path)
+            rel_path = os.path.splitdrive(rel_path)[1].lstrip(os.sep)
+            if not rel_path.endswith("-codex"):
+                rel_path = f"{rel_path}-codex"
+            out_path = os.path.join(out_root, rel_path)
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            work_dir = os.path.dirname(path) if phase == first_phase else args.phase_workdir
+            cmd = [
+                codex_bin,
+                "exec",
+                "--output-last-message",
+                out_path,
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--skip-git-repo-check",
+                "-C",
+                work_dir,
+            ]
+            logging.info(
+                "PhaseMode: phase=%s file=%s work_dir=%s -> %s",
+                phase,
+                path,
+                work_dir,
+                out_path,
+            )
+            try:
+                _invoke_codex(cmd, prompt, args.timeout, path)
+            except subprocess.TimeoutExpired as te:
+                logging.error("TIMEOUT after %ss on %s", te.timeout, path)
+                return None
+            except subprocess.CalledProcessError as cpe:
+                stderr = (cpe.stderr or b"").decode(errors="ignore")
+                logging.error("Codex exit %s on %s\n%s", cpe.returncode, path, stderr)
+                return None
+            except Exception as exc:
+                logging.error("Failed processing %s: %s", path, exc)
+                return None
+            return out_path
+
+        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            results = list(ex.map(worker, inputs))
+
+        inputs = [r for r in results if r]
+        if not inputs:
+            logging.info("PhaseMode: no outputs produced for phase %s", phase)
+            break
+
+
 def _run_findings_mode(args) -> None:
     with open(args.template, "r", encoding="utf-8") as f:
         template = f.read()
@@ -224,6 +327,9 @@ def main() -> None:
         return
     if getattr(args, "findings_json", None):
         _run_findings_mode(args)
+        return
+    if getattr(args, "phase_mode", False):
+        _run_phase_mode(args)
         return
 
     template_path = args.template

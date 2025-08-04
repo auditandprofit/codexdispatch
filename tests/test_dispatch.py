@@ -142,6 +142,28 @@ class TestParseArgs(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 dispatch.parse_args()
 
+    def test_parse_phase_mode(self):
+        argv = [
+            "dispatch.py",
+            "--phase-mode",
+            "--phase-templates",
+            "tmpldir",
+            "--phase-workdir",
+            "wd",
+            "--initial-files",
+            "files.txt",
+            "-o",
+            "out",
+            "-j",
+            "2",
+        ]
+        with unittest.mock.patch.object(sys, "argv", argv):
+            args = dispatch.parse_args()
+        self.assertTrue(args.phase_mode)
+        self.assertEqual(args.phase_templates, "tmpldir")
+        self.assertEqual(args.phase_workdir, "wd")
+        self.assertEqual(args.initial_files, "files.txt")
+
 
 class TestWorkDirSelection(unittest.TestCase):
     def setUp(self):
@@ -245,6 +267,67 @@ class PerFileWorkDirIntegration(unittest.TestCase):
 
             self.assertEqual(captured[file_a], dir_a)
             self.assertEqual(captured[file_b], dir_b)
+
+
+class PhaseModeIntegration(unittest.TestCase):
+    def test_phase_mode_two_phases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpl_dir = os.path.join(tmp, "tmpl")
+            os.mkdir(tmpl_dir)
+            with open(os.path.join(tmpl_dir, "1"), "w", encoding="utf-8") as f:
+                f.write("T1")
+            with open(os.path.join(tmpl_dir, "2"), "w", encoding="utf-8") as f:
+                f.write("T2")
+            file_a = os.path.join(tmp, "a.txt")
+            with open(file_a, "w", encoding="utf-8") as f:
+                f.write("A")
+            subdir = os.path.join(tmp, "sub")
+            os.mkdir(subdir)
+            file_b = os.path.join(subdir, "b.txt")
+            with open(file_b, "w", encoding="utf-8") as f:
+                f.write("B")
+            lst = os.path.join(tmp, "list.txt")
+            with open(lst, "w", encoding="utf-8") as f:
+                f.write(file_a + "\n" + subdir + "\n")
+            outdir = os.path.join(tmp, "out")
+            os.mkdir(outdir)
+            phase_wd = os.path.join(tmp, "wd")
+            os.mkdir(phase_wd)
+
+            argv = [
+                "dispatch.py",
+                "--phase-mode",
+                "--phase-templates",
+                tmpl_dir,
+                "--phase-workdir",
+                phase_wd,
+                "--initial-files",
+                lst,
+                "-o",
+                outdir,
+                "-j",
+                "1",
+            ]
+            captured: dict[str, str] = {}
+
+            def fake_invoke(cmd, prompt, timeout, path):
+                out = cmd[cmd.index("--output-last-message") + 1]
+                os.makedirs(os.path.dirname(out), exist_ok=True)
+                with open(out, "w", encoding="utf-8") as fh:
+                    fh.write("X")
+                captured[path] = cmd[cmd.index("-C") + 1]
+
+            with unittest.mock.patch.object(sys, "argv", argv), \
+                unittest.mock.patch("codexdispatch.dispatcher.find_codex_bin", return_value="codex"), \
+                unittest.mock.patch("codexdispatch.dispatcher._invoke_codex", side_effect=fake_invoke):
+                dispatch.main()
+
+            out_a = os.path.join(outdir, "1", os.path.abspath(file_a).lstrip(os.sep) + "-codex")
+            out_b = os.path.join(outdir, "1", os.path.abspath(file_b).lstrip(os.sep) + "-codex")
+            self.assertEqual(captured[file_a], os.path.dirname(file_a))
+            self.assertEqual(captured[file_b], os.path.dirname(file_b))
+            self.assertEqual(captured[out_a], phase_wd)
+            self.assertEqual(captured[out_b], phase_wd)
 
 
 class DispatchIntegration(unittest.TestCase):
