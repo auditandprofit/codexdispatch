@@ -12,8 +12,10 @@ import subprocess
 import json
 import re
 import hashlib
-import random
 import shutil
+import inspect
+import time
+import openai
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
@@ -21,6 +23,31 @@ from typing import Dict, List, Optional
 from .args import parse_args
 from .utils import collect_files, _invoke_codex, find_codex_bin, load_files
 from .security_audit import run_security_audit
+
+
+MAX_RETRIES = 3
+BACKOFF_BASE = 2  # seconds
+
+
+def _retry_openai(req_fn, *args, **kwargs):
+    """Invoke `req_fn` with retries & back-off."""
+    fn_name = req_fn.__name__ if inspect.isfunction(req_fn) else repr(req_fn)
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            return req_fn(*args, **kwargs)
+        except (openai.OpenAIError, TypeError, RuntimeError) as err:
+            logging.error(
+                "OpenAI error in %s (try %d/%d): %s",
+                fn_name,
+                attempt,
+                MAX_RETRIES,
+                err,
+            )
+            if attempt == MAX_RETRIES:
+                logging.critical("Retries exhausted; aborting.")
+                print(f"FATAL: {err}", file=sys.stderr, flush=True)
+                sys.exit(1)
+            time.sleep(BACKOFF_BASE ** attempt)
 
 
 def _strip_backticks(text: str) -> str:
@@ -77,13 +104,18 @@ def call_orchestrator(prompt: str, env: dict[str, str] | None = None) -> dict:
             },
             {"role": "user", "content": prompt},
         ]
-        response = openai_stub.openai_generate_response(
-            messages=messages,
-            functions=schema,
-            model="o3",
-            service_tier="flex",
-            reasoning_effort="high",
-        )
+        try:
+            response = _retry_openai(
+                openai_stub.openai_generate_response,
+                messages=messages,
+                functions=schema,
+                model="o3",
+                reasoning_effort="high",
+                service_tier="flex",
+            )
+        except Exception as err:
+            # Propagate to outer retry logic; no stub fall-back
+            raise
         name, data = openai_stub.openai_parse_function_call(response)
         if name == "orchestrator_decision" and isinstance(data, dict):
             if "inquiry" in data:
@@ -93,8 +125,6 @@ def call_orchestrator(prompt: str, env: dict[str, str] | None = None) -> dict:
                     "conclusion": data["conclusion"],
                     "summary": data.get("summary", ""),
                 }
-    except Exception as exc:  # pragma: no cover - fallback path
-        logging.warning("call_orchestrator falling back to stub: %s", exc)
     finally:
         if old_env is not None:
             for k in env or {}:
@@ -102,14 +132,7 @@ def call_orchestrator(prompt: str, env: dict[str, str] | None = None) -> dict:
                     os.environ[k] = old_env[k]
                 else:
                     os.environ.pop(k, None)
-    # This stub randomly concludes or asks for more details to exercise both
-    # branches during tests without requiring real API calls.
-    if random.random() < 0.3:
-        return {
-            "conclusion": random.choice(["valid", "invalid"]),
-            "summary": "stub conclusion",
-        }
-    return {"inquiry": "Provide precise reproduction steps for this finding."}
+    raise RuntimeError("Orchestrator did not return a decision")
 
 
 def _find_gitlab_findings(start: str) -> Optional[str]:
