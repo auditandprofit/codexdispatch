@@ -13,6 +13,7 @@ import json
 import re
 import hashlib
 import random
+import shutil
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
@@ -150,10 +151,11 @@ def _run_paramtrace_scan(path: str) -> None:
 
 def _run_phase_mode(args) -> None:
     try:
-        with open(args.audit_template, "r", encoding="utf-8") as f:
-            audit_template = f.read()
         with open(args.orchestrator_template, "r", encoding="utf-8") as f:
             orchestrator_template = f.read()
+        if not args.findings_list:
+            with open(args.audit_template, "r", encoding="utf-8") as f:
+                audit_template = f.read()
     except OSError as exc:
         logging.error("PhaseMode: failed reading template: %s", exc)
         return
@@ -161,17 +163,6 @@ def _run_phase_mode(args) -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     codex_bin = find_codex_bin(args.codex_bin)
 
-    if args.tree_dirs:
-        inputs = collect_files(args.tree_dirs, recursive=args.recursive)
-    elif args.data_dir:
-        inputs = load_files(args.data_dir)
-    elif args.file_list:
-        with open(args.file_list, "r", encoding="utf-8") as fh:
-            inputs = [p.strip() for p in fh if p.strip() and not p.strip().startswith("#")]
-    else:
-        inputs = []
-
-    inputs = sorted(dict.fromkeys(inputs))
     phase1_dir = os.path.join(args.output_dir, "phase_1")
     final_dir = os.path.join(args.output_dir, "final")
     os.makedirs(phase1_dir, exist_ok=True)
@@ -188,47 +179,86 @@ def _run_phase_mode(args) -> None:
     else:
         workdir_map = {}
 
-    # Phase 1 – run security audit
-    for path in inputs:
+    if args.findings_list:
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = f.read()
-        except UnicodeDecodeError:
-            logging.warning("PhaseMode: skipping non-text file %s", path)
-            continue
+            with open(args.findings_list, "r", encoding="utf-8") as fh:
+                raw = [l.strip() for l in fh if l.strip() and not l.strip().startswith("#")]
         except OSError as exc:
-            logging.error("PhaseMode: failed reading %s: %s", path, exc)
-            continue
-        full_path = os.path.abspath(path)
-        prompt = f"{audit_template}\n{full_path}\n{data}"
-        rel_path = os.path.splitdrive(full_path)[1].lstrip(os.sep)
-        if not rel_path.endswith("-codex"):
-            rel_path = f"{rel_path}-codex"
-        out_path = os.path.join(phase1_dir, rel_path)
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        cmd = [
-            codex_bin,
-            "exec",
-            "--output-last-message",
-            out_path,
-            "--dangerously-bypass-approvals-and-sandbox",
-            "--skip-git-repo-check",
-            "-C",
-            os.path.dirname(path),
-        ]
-        logging.info("PhaseMode: phase_1 file=%s -> %s", path, out_path)
-        try:
-            _invoke_codex(cmd, prompt, args.timeout, path)
-        except subprocess.TimeoutExpired as te:
-            logging.error("TIMEOUT after %ss on %s", te.timeout, path)
-        except subprocess.CalledProcessError as cpe:
-            stderr = (cpe.stderr or b"").decode(errors="ignore")
-            logging.error("Codex exit %s on %s\n%s", cpe.returncode, path, stderr)
-        except Exception as exc:
-            logging.error("Failed processing %s: %s", path, exc)
-        workdir_map[out_path] = os.path.dirname(path)
+            logging.error("PhaseMode: failed reading findings list: %s", exc)
+            return
+        seen: set[str] = set()
+        inputs: List[str] = []
+        for p in raw:
+            if p not in seen:
+                seen.add(p)
+                inputs.append(p)
+        for src in inputs:
+            if not os.path.isfile(src):
+                logging.warning("PhaseMode: skipping missing finding %s", src)
+                continue
+            dest = os.path.join(phase1_dir, os.path.basename(src))
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            try:
+                shutil.copyfile(src, dest)
+            except OSError as exc:
+                logging.error("PhaseMode: failed copying %s: %s", src, exc)
+                continue
+            workdir_map[dest] = args.findings_workdir
         with open(workdirs_path, "w", encoding="utf-8") as wf:
             json.dump(workdir_map, wf)
+    else:
+        if args.tree_dirs:
+            inputs = collect_files(args.tree_dirs, recursive=args.recursive)
+        elif args.data_dir:
+            inputs = load_files(args.data_dir)
+        elif args.file_list:
+            with open(args.file_list, "r", encoding="utf-8") as fh:
+                inputs = [p.strip() for p in fh if p.strip() and not p.strip().startswith("#")]
+        else:
+            inputs = []
+        inputs = sorted(dict.fromkeys(inputs))
+
+        # Phase 1 – run security audit
+        for path in inputs:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = f.read()
+            except UnicodeDecodeError:
+                logging.warning("PhaseMode: skipping non-text file %s", path)
+                continue
+            except OSError as exc:
+                logging.error("PhaseMode: failed reading %s: %s", path, exc)
+                continue
+            full_path = os.path.abspath(path)
+            prompt = f"{audit_template}\n{full_path}\n{data}"
+            rel_path = os.path.splitdrive(full_path)[1].lstrip(os.sep)
+            if not rel_path.endswith("-codex"):
+                rel_path = f"{rel_path}-codex"
+            out_path = os.path.join(phase1_dir, rel_path)
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            cmd = [
+                codex_bin,
+                "exec",
+                "--output-last-message",
+                out_path,
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--skip-git-repo-check",
+                "-C",
+                os.path.dirname(path),
+            ]
+            logging.info("PhaseMode: phase_1 file=%s -> %s", path, out_path)
+            try:
+                _invoke_codex(cmd, prompt, args.timeout, path)
+            except subprocess.TimeoutExpired as te:
+                logging.error("TIMEOUT after %ss on %s", te.timeout, path)
+            except subprocess.CalledProcessError as cpe:
+                stderr = (cpe.stderr or b"").decode(errors="ignore")
+                logging.error("Codex exit %s on %s\n%s", cpe.returncode, path, stderr)
+            except Exception as exc:
+                logging.error("Failed processing %s: %s", path, exc)
+            workdir_map[out_path] = os.path.dirname(path)
+            with open(workdirs_path, "w", encoding="utf-8") as wf:
+                json.dump(workdir_map, wf)
 
     # Phase 2..N – orchestrator loop
     for dirpath, _, filenames in os.walk(phase1_dir):
