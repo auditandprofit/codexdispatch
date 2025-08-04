@@ -43,12 +43,14 @@ or
 
 ```json
 {
-  "conclusion": "valid|invalid|inconclusive"
-}
-```
+    "conclusion": "valid|invalid|inconclusive",
+    "summary": "<brief reasoning>"
+  }
+ ```
 
 CONSTRAINTS
 • Return **only** one valid JSON object as shown, minified (no comments, prose, or extra keys).
+• When providing a conclusion also supply a concise logical summary in `summary`.
 • Stop asking questions when a verdict can be made or when inquiry budget is exhausted.
 
 Put the JSON object alone on the final line, no trailing text.

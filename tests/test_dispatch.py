@@ -372,7 +372,7 @@ class PhaseModeIntegration(unittest.TestCase):
                 captured.append(out)
 
             def fake_orchestrator(prompt):
-                return {"conclusion": "valid"}
+                return {"conclusion": "valid", "summary": "done"}
 
             with unittest.mock.patch.object(sys, "argv", argv), \
                 unittest.mock.patch("codexdispatch.dispatcher.find_codex_bin", return_value="codex"), \

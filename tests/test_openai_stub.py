@@ -10,7 +10,7 @@ class TestCallOrchestrator(unittest.TestCase):
     def test_uses_openai_stub(self):
         fc = types.SimpleNamespace(
             name="orchestrator_decision",
-            arguments=json.dumps({"conclusion": "valid"}),
+            arguments=json.dumps({"conclusion": "valid", "summary": "done"}),
         )
         msg = types.SimpleNamespace(function_call=fc)
         choice = types.SimpleNamespace(message=msg)
@@ -22,7 +22,7 @@ class TestCallOrchestrator(unittest.TestCase):
         ) as mock_gen:
             result = dispatcher.call_orchestrator("prompt")
 
-        self.assertEqual(result, {"conclusion": "valid"})
+        self.assertEqual(result, {"conclusion": "valid", "summary": "done"})
         mock_gen.assert_called_once()
         _, kwargs = mock_gen.call_args
         self.assertEqual(kwargs["model"], "o3")

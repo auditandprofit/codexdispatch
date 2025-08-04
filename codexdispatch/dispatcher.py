@@ -24,7 +24,7 @@ from .security_audit import run_security_audit
 
 
 def call_orchestrator(prompt: str) -> dict:
-    """Return {"inquiry": "..."} or {"conclusion": "valid|invalid"}."""
+    """Return {"inquiry": "..."} or {"conclusion": "valid|invalid", "summary": "..."}."""
     try:
         from . import openai_stub
 
@@ -40,6 +40,7 @@ def call_orchestrator(prompt: str) -> dict:
                             "type": "string",
                             "enum": ["valid", "invalid"],
                         },
+                        "summary": {"type": "string"},
                     },
                     "additionalProperties": False,
                 },
@@ -52,7 +53,8 @@ def call_orchestrator(prompt: str) -> dict:
                     "You are a security audit orchestrator. Use the"
                     " orchestrator_decision function to either request"
                     " further details or conclude whether the finding is"
-                    " valid or invalid."
+                    " valid or invalid. When concluding, provide a concise"
+                    " reasoning summary in the 'summary' field."
                 ),
             },
             {"role": "user", "content": prompt},
@@ -69,13 +71,19 @@ def call_orchestrator(prompt: str) -> dict:
             if "inquiry" in data:
                 return {"inquiry": data["inquiry"]}
             if "conclusion" in data:
-                return {"conclusion": data["conclusion"]}
+                return {
+                    "conclusion": data["conclusion"],
+                    "summary": data.get("summary", ""),
+                }
     except Exception as exc:  # pragma: no cover - fallback path
         logging.warning("call_orchestrator falling back to stub: %s", exc)
     # This stub randomly concludes or asks for more details to exercise both
     # branches during tests without requiring real API calls.
     if random.random() < 0.3:
-        return {"conclusion": random.choice(["valid", "invalid"])}
+        return {
+            "conclusion": random.choice(["valid", "invalid"]),
+            "summary": "stub conclusion",
+        }
     return {"inquiry": "Provide precise reproduction steps for this finding."}
 
 

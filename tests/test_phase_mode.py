@@ -62,7 +62,7 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                     with open(out, "w", encoding="utf-8") as fh:
                         fh.write(inquiry_output)
 
-            orch_responses = [{"inquiry": "why?"}, {"conclusion": "valid"}]
+            orch_responses = [{"inquiry": "why?"}, {"conclusion": "valid", "summary": "done"}]
 
             def fake_orchestrator(prompt):
                 return orch_responses.pop(0)
@@ -151,9 +151,9 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                     fh.write("resp")
 
             orch_responses = [
-                {"conclusion": "valid"},
+                {"conclusion": "valid", "summary": "done"},
                 {"inquiry": "why?"},
-                {"conclusion": "invalid"},
+                {"conclusion": "invalid", "summary": "oops"},
             ]
 
             def fake_orchestrator(prompt):
@@ -250,7 +250,7 @@ class TestPhaseModeWorkflow(unittest.TestCase):
             self.assertEqual(data["status"], "open")
             self.assertEqual(len(captured_cmds), 1)
 
-            orch_responses2 = [{"conclusion": "valid"}]
+            orch_responses2 = [{"conclusion": "valid", "summary": "done"}]
 
             def second_orchestrator(prompt):
                 return orch_responses2.pop(0)
