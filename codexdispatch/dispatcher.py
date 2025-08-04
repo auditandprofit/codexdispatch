@@ -459,7 +459,14 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
                         resolved_path = alt_path
                         work_dir = os.path.dirname(os.path.abspath(resolved_path))
                 except OSError:
-                    logging.warning("PhaseMode: unable to read %s", file_path)
+                    ee_alt_path = os.path.join(args.phase_root, "ee", file_path)
+                    try:
+                        with open(ee_alt_path, "r", encoding="utf-8") as sf:
+                            source = sf.read()
+                            resolved_path = ee_alt_path
+                            work_dir = os.path.dirname(os.path.abspath(resolved_path))
+                    except OSError:
+                        logging.warning("PhaseMode: unable to read %s", file_path)
             else:
                 logging.warning("PhaseMode: unable to read %s", file_path)
 
