@@ -47,7 +47,7 @@ class TestPhaseModeWorkflow(unittest.TestCase):
             def fake_find_codex_bin(path):
                 return "codex"
 
-            phase1_output = '{"finding": "x"}'
+            phase1_output = json.dumps({"finding": "x", "file_path": src})
             inquiry_output = "resp"
 
             captured_cmds: list[list[str]] = []
@@ -82,15 +82,12 @@ class TestPhaseModeWorkflow(unittest.TestCase):
             cache_dir = os.path.join(tmp, "cache")
             self.assertTrue(os.path.isdir(cache_dir))
             cache_files = os.listdir(cache_dir)
-            self.assertIn("workdirs.json", cache_files)
-            hash_file = [f for f in cache_files if f != "workdirs.json"][0]
+            self.assertEqual(len(cache_files), 1)
+            hash_file = cache_files[0]
             with open(os.path.join(cache_dir, hash_file), "r", encoding="utf-8") as cf:
                 data = json.load(cf)
             self.assertEqual(data["status"], "concluded")
             self.assertEqual(len(data["context"]), 1)
-            with open(os.path.join(cache_dir, "workdirs.json"), "r", encoding="utf-8") as wf:
-                wd_map = json.load(wf)
-            self.assertEqual(wd_map[phase1_path], os.path.dirname(src))
             phase2_meta = phase2_path + ".meta"
             self.assertTrue(os.path.exists(phase2_meta))
             with open(phase2_meta, "r", encoding="utf-8") as mf:
@@ -104,11 +101,17 @@ class TestPhaseModeWorkflow(unittest.TestCase):
 
     def test_presupplied_findings_run(self):
         with tempfile.TemporaryDirectory() as tmp:
+            workdir = os.path.join(tmp, "repo")
+            os.mkdir(workdir)
             f1 = os.path.join(tmp, "f1.json")
             f2 = os.path.join(tmp, "f2.json")
             for path, val in ((f1, "a"), (f2, "b")):
                 with open(path, "w", encoding="utf-8") as fh:
-                    fh.write(json.dumps({"finding": val}))
+                    fh.write(
+                        json.dumps(
+                            {"finding": val, "file_path": os.path.join(workdir, val + ".rb")}
+                        )
+                    )
             listfile = os.path.join(tmp, "findings.txt")
             with open(listfile, "w", encoding="utf-8") as fh:
                 fh.write(f1 + "\n")
@@ -120,8 +123,6 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 fh.write("orch")
             outdir = os.path.join(tmp, "out")
             os.mkdir(outdir)
-            workdir = os.path.join(tmp, "repo")
-            os.mkdir(workdir)
             argv = [
                 "dispatch.py",
                 "--phase-mode",
@@ -129,8 +130,6 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 orch,
                 "--findings-list",
                 listfile,
-                "--findings-workdir",
-                workdir,
                 "-o",
                 outdir,
                 "-j",
@@ -175,19 +174,22 @@ class TestPhaseModeWorkflow(unittest.TestCase):
             with open(phase2_meta, "r", encoding="utf-8") as mf:
                 meta = json.load(mf)
             self.assertEqual(meta["response"], "resp")
-            cache_dir = os.path.join(tmp, "cache")
-            with open(os.path.join(cache_dir, "workdirs.json"), "r", encoding="utf-8") as wf:
-                wd_map = json.load(wf)
-            self.assertEqual(
-                wd_map[os.path.join(phase1_dir, os.path.basename(f1))], workdir
-            )
             self.assertEqual(len(captured_cmds), 1)
+            cmd = captured_cmds[0]
+            self.assertIn("-C", cmd)
+            self.assertEqual(cmd[cmd.index("-C") + 1], workdir)
 
     def test_orchestrator_env_forwarded(self):
         with tempfile.TemporaryDirectory() as tmp:
+            workdir = os.path.join(tmp, "repo")
+            os.mkdir(workdir)
             finding = os.path.join(tmp, "f.json")
             with open(finding, "w", encoding="utf-8") as fh:
-                fh.write(json.dumps({"finding": "x"}))
+                fh.write(
+                    json.dumps(
+                        {"finding": "x", "file_path": os.path.join(workdir, "f.rb")}
+                    )
+                )
             listfile = os.path.join(tmp, "findings.txt")
             with open(listfile, "w", encoding="utf-8") as fh:
                 fh.write(finding + "\n")
@@ -196,8 +198,6 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 fh.write("orch")
             outdir = os.path.join(tmp, "out")
             os.mkdir(outdir)
-            workdir = os.path.join(tmp, "repo")
-            os.mkdir(workdir)
             argv = [
                 "dispatch.py",
                 "--phase-mode",
@@ -205,8 +205,6 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 orch,
                 "--findings-list",
                 listfile,
-                "--findings-workdir",
-                workdir,
                 "-o",
                 outdir,
                 "-j",
@@ -236,12 +234,30 @@ class TestPhaseModeWorkflow(unittest.TestCase):
 
     def test_min_severity_filter(self):
         with tempfile.TemporaryDirectory() as tmp:
+            workdir = os.path.join(tmp, "repo")
+            os.mkdir(workdir)
             high = os.path.join(tmp, "high.json")
             low = os.path.join(tmp, "low.json")
             with open(high, "w", encoding="utf-8") as fh:
-                fh.write(json.dumps({"finding": "a", "severity": "high"}))
+                fh.write(
+                    json.dumps(
+                        {
+                            "finding": "a",
+                            "severity": "high",
+                            "file_path": os.path.join(workdir, "h.rb"),
+                        }
+                    )
+                )
             with open(low, "w", encoding="utf-8") as fh:
-                fh.write(json.dumps({"finding": "b", "severity": "low"}))
+                fh.write(
+                    json.dumps(
+                        {
+                            "finding": "b",
+                            "severity": "low",
+                            "file_path": os.path.join(workdir, "l.rb"),
+                        }
+                    )
+                )
             listfile = os.path.join(tmp, "findings.txt")
             with open(listfile, "w", encoding="utf-8") as fh:
                 fh.write(high + "\n")
@@ -251,8 +267,6 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 fh.write("orch")
             outdir = os.path.join(tmp, "out")
             os.mkdir(outdir)
-            workdir = os.path.join(tmp, "repo")
-            os.mkdir(workdir)
             argv = [
                 "dispatch.py",
                 "--phase-mode",
@@ -260,8 +274,6 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 orch,
                 "--findings-list",
                 listfile,
-                "--findings-workdir",
-                workdir,
                 "-o",
                 outdir,
                 "-j",
@@ -296,9 +308,16 @@ class TestPhaseModeWorkflow(unittest.TestCase):
 
     def test_backtick_wrapped_findings_cleaned(self):
         with tempfile.TemporaryDirectory() as tmp:
+            workdir = os.path.join(tmp, "repo")
+            os.mkdir(workdir)
             finding = os.path.join(tmp, "f.json")
+            wrapped = (
+                '````\n{"finding": "x", "file_path": "'
+                + os.path.join(workdir, "f.rb")
+                + '"}\n````'
+            ).replace("```" + "`", "```")
             with open(finding, "w", encoding="utf-8") as fh:
-                fh.write('````\n{"finding": "x"}\n````'.replace("```" + "`", "```"))
+                fh.write(wrapped)
             listfile = os.path.join(tmp, "findings.txt")
             with open(listfile, "w", encoding="utf-8") as fh:
                 fh.write(finding + "\n")
@@ -307,8 +326,6 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 fh.write("orch")
             outdir = os.path.join(tmp, "out")
             os.mkdir(outdir)
-            workdir = os.path.join(tmp, "repo")
-            os.mkdir(workdir)
             argv = [
                 "dispatch.py",
                 "--phase-mode",
@@ -316,8 +333,6 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 orch,
                 "--findings-list",
                 listfile,
-                "--findings-workdir",
-                workdir,
                 "-o",
                 outdir,
                 "-j",
@@ -340,7 +355,10 @@ class TestPhaseModeWorkflow(unittest.TestCase):
             phase1_path = os.path.join(phase1_dir, os.path.basename(finding))
             with open(phase1_path, "r", encoding="utf-8") as fh:
                 data = fh.read()
-            self.assertEqual(data, json.dumps({"finding": "x"}))
+            self.assertEqual(
+                data,
+                json.dumps({"finding": "x", "file_path": os.path.join(workdir, "f.rb")}),
+            )
             self.assertFalse(os.path.exists(os.path.join(phase1_dir, "parse_errors.log")))
 
     def test_unparsable_findings_skipped(self):
@@ -356,8 +374,6 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 fh.write("orch")
             outdir = os.path.join(tmp, "out")
             os.mkdir(outdir)
-            workdir = os.path.join(tmp, "repo")
-            os.mkdir(workdir)
             argv = [
                 "dispatch.py",
                 "--phase-mode",
@@ -365,8 +381,6 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 orch,
                 "--findings-list",
                 listfile,
-                "--findings-workdir",
-                workdir,
                 "-o",
                 outdir,
                 "-j",
@@ -397,9 +411,15 @@ class TestPhaseModeWorkflow(unittest.TestCase):
 
     def test_cache_resume(self):
         with tempfile.TemporaryDirectory() as tmp:
+            workdir = os.path.join(tmp, "repo")
+            os.mkdir(workdir)
             finding = os.path.join(tmp, "f.json")
             with open(finding, "w", encoding="utf-8") as fh:
-                fh.write(json.dumps({"finding": "x"}))
+                fh.write(
+                    json.dumps(
+                        {"finding": "x", "file_path": os.path.join(workdir, "f.rb")}
+                    )
+                )
             listfile = os.path.join(tmp, "findings.txt")
             with open(listfile, "w", encoding="utf-8") as fh:
                 fh.write(finding + "\n")
@@ -408,8 +428,6 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 fh.write("orch")
             outdir = os.path.join(tmp, "out")
             os.mkdir(outdir)
-            workdir = os.path.join(tmp, "repo")
-            os.mkdir(workdir)
             argv = [
                 "dispatch.py",
                 "--phase-mode",
@@ -417,8 +435,6 @@ class TestPhaseModeWorkflow(unittest.TestCase):
                 orch,
                 "--findings-list",
                 listfile,
-                "--findings-workdir",
-                workdir,
                 "-o",
                 outdir,
                 "-j",

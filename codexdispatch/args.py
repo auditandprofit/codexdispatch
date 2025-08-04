@@ -149,12 +149,6 @@ def parse_args() -> argparse.Namespace:
         help="mapping filename for multi-pass mode",
     )
     parser.add_argument(
-        "--findings-workdir",
-        dest="findings_workdir",
-        default=None,
-        help="working directory associated with entries from --findings-list",
-    )
-    parser.add_argument(
         "--relative-dir",
         dest="relative_dir",
         default=None,
@@ -203,8 +197,6 @@ def parse_args() -> argparse.Namespace:
         return args
     if args.phase_mode:
         if args.findings_list:
-            if not args.findings_workdir:
-                parser.error("--findings-workdir is required with --findings-list")
             if any(
                 [
                     args.data_dir,
@@ -221,8 +213,6 @@ def parse_args() -> argparse.Namespace:
                 parser.error("--orchestrator-template is required with --findings-list")
             if args.output_dir is None or args.workers is None:
                 parser.error("--output-dir and --workers are required")
-            if not os.path.isdir(args.findings_workdir):
-                parser.error("--findings-workdir must be an existing directory")
             return args
         if not args.audit_template or not args.orchestrator_template:
             parser.error("--audit-template and --orchestrator-template are required with --phase-mode")
@@ -235,8 +225,8 @@ def parse_args() -> argparse.Namespace:
         return args
     if args.min_severity:
         parser.error("--min-severity requires --phase-mode")
-    if args.findings_list or args.findings_workdir:
-        parser.error("--findings-list and --findings-workdir require --phase-mode")
+    if args.findings_list:
+        parser.error("--findings-list requires --phase-mode")
     if args.template is None:
         parser.error("template is required")
     if not any([args.data_dir, args.tree_dirs, args.file_list, args.findings_json]):
