@@ -33,7 +33,7 @@ def openai_generate_response(
     messages: List[Dict[str, str]],
     functions: Optional[List[Dict[str, Any]]] = None,
     function_call: Optional[str | Dict[str, str]] = "auto",
-    model: str = "o3-mini",
+    model: str = "o3",
     reasoning_effort: str = "high",
     service_tier: str = "flex",
     **extra: Any,
