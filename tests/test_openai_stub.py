@@ -14,12 +14,11 @@ import codexdispatch.openai_stub as openai_stub
 class TestCallOrchestrator(unittest.TestCase):
     def test_uses_openai_stub(self):
         item = types.SimpleNamespace(
-            type="tool_call",
+            type="function_call",
             name="orchestrator_decision",
             arguments=json.dumps({"conclusion": "valid", "summary": "done"}),
         )
-        msg = types.SimpleNamespace(content=[item])
-        mock_response = types.SimpleNamespace(output=[msg])
+        mock_response = types.SimpleNamespace(output=[item])
 
         with mock.patch(
             "codexdispatch.openai_stub.openai_generate_response",
@@ -64,12 +63,11 @@ class TestCallOrchestrator(unittest.TestCase):
 
     def test_retry_recovers_after_failure(self):
         item = types.SimpleNamespace(
-            type="tool_call",
+            type="function_call",
             name="orchestrator_decision",
             arguments=json.dumps({"inquiry": "more info"}),
         )
-        msg = types.SimpleNamespace(content=[item])
-        mock_response = types.SimpleNamespace(output=[msg])
+        mock_response = types.SimpleNamespace(output=[item])
         side_effects = [openai.OpenAIError("fail"), mock_response]
         with mock.patch.object(dispatcher, "BACKOFF_BASE", 0.01), mock.patch(
             "codexdispatch.openai_stub.openai_generate_response",
@@ -110,3 +108,32 @@ class TestGenerateResponse(unittest.TestCase):
         self.assertEqual(tools[1]["name"], "helper")
         self.assertEqual(tools[1]["parameters"], {})
         self.assertNotIn("function", tools[1])
+
+
+class TestParseFunctionCall(unittest.TestCase):
+    def test_parses_top_level_function_call(self):
+        item = types.SimpleNamespace(
+            type="function_call",
+            name="orchestrator_decision",
+            arguments=json.dumps({"inquiry": "info"}),
+        )
+        response = types.SimpleNamespace(output=[item])
+
+        name, data = openai_stub.openai_parse_function_call(response)
+
+        self.assertEqual(name, "orchestrator_decision")
+        self.assertEqual(data, {"inquiry": "info"})
+
+    def test_parses_legacy_tool_call(self):
+        item = types.SimpleNamespace(
+            type="tool_call",
+            name="orchestrator_decision",
+            arguments=json.dumps({"conclusion": "valid"}),
+        )
+        msg = types.SimpleNamespace(content=[item])
+        response = types.SimpleNamespace(output=[msg])
+
+        name, data = openai_stub.openai_parse_function_call(response)
+
+        self.assertEqual(name, "orchestrator_decision")
+        self.assertEqual(data, {"conclusion": "valid"})
