@@ -153,11 +153,13 @@ def call_orchestrator(prompt: str, env: dict[str, str] | None = None) -> dict:
             {
                 "role": "system",
                 "content": (
-                    "You are a security audit orchestrator. Use the"
-                    " orchestrator_decision function to either request"
-                    " further details or conclude whether the finding is"
-                    " valid or invalid. When concluding, provide a concise"
-                    " reasoning summary in the 'summary' field."
+                    "You are a security audit orchestrator. Always respond"
+                    " using the orchestrator_decision function. Ask the"
+                    " smallest, fastest-to-answer question that gives the"
+                    " most insight toward validating or invalidating the"
+                    " finding, and minimise the number of inquiries needed"
+                    " to reach a conclusion. When concluding, provide a"
+                    " concise reasoning summary in the 'summary' field."
                 ),
             },
             {"role": "user", "content": prompt},
@@ -183,6 +185,29 @@ def call_orchestrator(prompt: str, env: dict[str, str] | None = None) -> dict:
                     "conclusion": data["conclusion"],
                     "summary": data.get("summary", ""),
                 }
+
+        # Fallback: some models may return raw JSON instead of a tool call.
+        text = getattr(response, "output_text", "")
+        if not text:
+            for item in getattr(response, "output", []) or []:
+                if getattr(item, "type", None) == "message":
+                    for part in getattr(item, "content", []) or []:
+                        txt = getattr(part, "text", None)
+                        if txt:
+                            text += txt
+        if text:
+            try:
+                raw = json.loads(text.strip())
+            except json.JSONDecodeError:
+                raw = None
+            if isinstance(raw, dict):
+                if "inquiry" in raw:
+                    return {"inquiry": raw["inquiry"]}
+                if "conclusion" in raw:
+                    return {
+                        "conclusion": raw["conclusion"],
+                        "summary": raw.get("summary", ""),
+                    }
     finally:
         if old_env is not None:
             for k in env or {}:
@@ -485,6 +510,7 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
                 verdicts[vuln_id] = {
                     "file_path": file_path,
                     "conclusion": result.get("conclusion"),
+                    "summary": result.get("summary", ""),
                     "severity": severity,
                     "depth": depth,
                 }
@@ -538,11 +564,13 @@ def _run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> Non
             depth = len(context)
             final_path = os.path.join(final_dir, name)
             os.makedirs(os.path.dirname(final_path), exist_ok=True)
+            summary = "No conclusion: inquiry budget exhausted"
             with open(final_path, "w", encoding="utf-8") as fh:
-                json.dump({"conclusion": "inconclusive"}, fh)
+                json.dump({"conclusion": "inconclusive", "summary": summary}, fh)
             verdicts[vuln_id] = {
                 "file_path": file_path,
                 "conclusion": "inconclusive",
+                "summary": summary,
                 "severity": severity,
                 "depth": depth,
             }
