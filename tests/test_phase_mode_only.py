@@ -350,7 +350,7 @@ class TestPhaseModeOnly(unittest.TestCase):
                 with open(out, "w", encoding="utf-8") as fh:
                     fh.write("resp")
 
-            orch_responses = [{"inquiry": "why"}, {}]
+            orch_responses = [{"inquiry": "why"}, {"summary": "ran out"}]
 
             def fake_orchestrator(prompt, env=None):
                 prompts.append(prompt)
@@ -365,6 +365,7 @@ class TestPhaseModeOnly(unittest.TestCase):
             with open(verdicts_path, "r", encoding="utf-8") as vf:
                 verdicts = json.load(vf)
             self.assertEqual(verdicts["v1"]["conclusion"], "inconclusive")
+            self.assertEqual(verdicts["v1"]["summary"], "ran out")
             self.assertEqual(verdicts["v1"]["depth"], 2)
             self.assertEqual(len(prompts), 2)
             self.assertEqual(len(captured_cmds), 1)

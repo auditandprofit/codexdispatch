@@ -387,9 +387,9 @@ def process_finding(name: str, args, orchestrator_env: dict[str, str] | None, se
         result = call_orchestrator(final_prompt, env=orchestrator_env, semaphore=semaphore)
     except TypeError:
         result = call_orchestrator(final_prompt, env=orchestrator_env)
+    depth = len(context) + 1
+    final_path = os.path.join(final_dir, name)
     if "conclusion" in result:
-        depth = len(context) + 1
-        final_path = os.path.join(final_dir, name)
         _atomic_write_json(final_path, result)
         verdict = {
             "file_path": file_path,
@@ -401,14 +401,11 @@ def process_finding(name: str, args, orchestrator_env: dict[str, str] | None, se
         _atomic_write_json(cache_path, {"context": context, "status": "concluded"})
         return {vuln_id: verdict}
 
-    depth = len(context) + 1
-    final_path = os.path.join(final_dir, name)
-    summary = "No conclusion: inquiry budget exhausted"
-    _atomic_write_json(final_path, {"conclusion": "inconclusive", "summary": summary})
+    _atomic_write_json(final_path, result)
     verdict = {
         "file_path": file_path,
-        "conclusion": "inconclusive",
-        "summary": summary,
+        "conclusion": result.get("conclusion", "inconclusive"),
+        "summary": result.get("summary", "").strip() or "Model returned no summary.",
         "severity": severity,
         "depth": depth,
     }
