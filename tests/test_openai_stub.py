@@ -7,8 +7,8 @@ from unittest import mock
 
 import openai
 
-import codexdispatch.dispatcher as dispatcher
-import codexdispatch.openai_stub as openai_stub
+import phase_mode.dispatcher as dispatcher
+import phase_mode.openai_stub as openai_stub
 
 
 class TestCallOrchestrator(unittest.TestCase):
@@ -21,7 +21,7 @@ class TestCallOrchestrator(unittest.TestCase):
         mock_response = types.SimpleNamespace(output=[item])
 
         with mock.patch(
-            "codexdispatch.openai_stub.openai_generate_response",
+            "phase_mode.openai_stub.openai_generate_response",
             return_value=mock_response,
         ) as mock_gen:
             result = dispatcher.call_orchestrator("prompt")
@@ -41,10 +41,10 @@ class TestCallOrchestrator(unittest.TestCase):
             return types.SimpleNamespace(output=[types.SimpleNamespace(content=[])])
 
         with mock.patch(
-            "codexdispatch.openai_stub.openai_generate_response",
+            "phase_mode.openai_stub.openai_generate_response",
             side_effect=fake_generate_response,
         ), mock.patch(
-            "codexdispatch.openai_stub.openai_parse_function_call",
+            "phase_mode.openai_stub.openai_parse_function_call",
             return_value=("orchestrator_decision", {"inquiry": "ok"}),
         ):
             dispatcher.call_orchestrator("prompt", env={"TEST_KEY": "VAL"})
@@ -54,7 +54,7 @@ class TestCallOrchestrator(unittest.TestCase):
 
     def test_retry_exits_after_failures(self):
         with mock.patch.object(dispatcher, "BACKOFF_BASE", 0), mock.patch(
-            "codexdispatch.openai_stub.openai_generate_response",
+            "phase_mode.openai_stub.openai_generate_response",
             side_effect=openai.OpenAIError("boom"),
         ) as mock_gen:
             with self.assertRaises(SystemExit):
@@ -70,7 +70,7 @@ class TestCallOrchestrator(unittest.TestCase):
         mock_response = types.SimpleNamespace(output=[item])
         side_effects = [openai.OpenAIError("fail"), mock_response]
         with mock.patch.object(dispatcher, "BACKOFF_BASE", 0.01), mock.patch(
-            "codexdispatch.openai_stub.openai_generate_response",
+            "phase_mode.openai_stub.openai_generate_response",
             side_effect=side_effects,
         ) as mock_gen:
             start = time.time()
@@ -93,7 +93,7 @@ class TestGenerateResponse(unittest.TestCase):
         fake_client = types.SimpleNamespace(responses=FakeResponses())
 
         with mock.patch(
-            "codexdispatch.openai_stub.openai_configure_api",
+            "phase_mode.openai_stub.openai_configure_api",
             return_value=fake_client,
         ):
             messages = [{"role": "user", "content": "hi"}]

@@ -80,11 +80,6 @@ def parse_args() -> argparse.Namespace:
         dest="findings_json",
         help="GitLab findings.json input file",
     )
-    group.add_argument(
-        "--findings-list",
-        dest="findings_list",
-        help="text file containing paths to pre-supplied finding outputs",
-    )
     parser.add_argument(
         "--prepend-path",
         dest="prepend_path",
@@ -160,79 +155,9 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="recursively scan directory for paramtrace outputs",
     )
-    parser.add_argument(
-        "--phase-mode",
-        action="store_true",
-        default=False,
-        help="enable multi-phase processing using audit and orchestrator templates",
-    )
-    parser.add_argument(
-        "--audit-template",
-        dest="audit_template",
-        default=None,
-        help="path to the security-audit Codex template",
-    )
-    parser.add_argument(
-        "--orchestrator-template",
-        dest="orchestrator_template",
-        default=None,
-        help="path to the orchestrator chat-completion template",
-    )
-    parser.add_argument(
-        "--max-inquiries",
-        dest="max_inquiries",
-        type=int,
-        default=3,
-        help="cap on orchestrator and Codex iterations per finding",
-    )
-    parser.add_argument(
-        "--min-severity",
-        dest="min_severity",
-        choices=["low", "medium", "high", "critical"],
-        default=None,
-        help="minimum severity required for a vulnerability to be processed by the orchestrator in phase mode",
-    )
-    parser.add_argument(
-        "--phase-root",
-        dest="phase_root",
-        default=None,
-        help="top-level directory to resolve vulnerability file paths in phase mode",
-    )
     args = parser.parse_args()
     if args.scan_paramtrace:
         return args
-    if args.phase_mode:
-        if args.findings_list:
-            if any(
-                [
-                    args.data_dir,
-                    args.tree_dirs,
-                    args.file_list,
-                    args.findings_json,
-                    args.audit_template,
-                ]
-            ):
-                parser.error(
-                    "--findings-list is incompatible with --data-dir, --tree-dirs, --file-list, --findings-json, and --audit-template"
-                )
-            if args.orchestrator_template is None:
-                parser.error("--orchestrator-template is required with --findings-list")
-            if args.output_dir is None or args.workers is None:
-                parser.error("--output-dir and --workers are required")
-            return args
-        if not args.audit_template or not args.orchestrator_template:
-            parser.error("--audit-template and --orchestrator-template are required with --phase-mode")
-        if not any([args.data_dir, args.tree_dirs, args.file_list, args.findings_json]):
-            parser.error(
-                "one of --data-dir, --tree-dirs, --file-list, or --findings-json is required"
-            )
-        if args.output_dir is None or args.workers is None:
-            parser.error("--output-dir and --workers are required")
-        return args
-    if args.min_severity:
-        parser.error("--min-severity requires --phase-mode")
-    if args.findings_list:
-        parser.error("--findings-list requires --phase-mode")
     if args.template is None:
         parser.error("template is required")
     if not any([args.data_dir, args.tree_dirs, args.file_list, args.findings_json]):

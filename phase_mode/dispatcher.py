@@ -7,6 +7,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import time
 from typing import Dict, List, Optional
 
@@ -37,7 +38,8 @@ def _retry_openai(req_fn, *args, **kwargs):
             )
             if attempt == MAX_RETRIES:
                 logging.critical("Retries exhausted; aborting.")
-                raise
+                print(f"FATAL: {err}", file=sys.stderr, flush=True)
+                sys.exit(1)
             time.sleep(BACKOFF_BASE ** attempt)
 
 
