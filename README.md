@@ -46,3 +46,20 @@ For testing workflows without invoking Codex, combine `--security-audit` with
 `--mock-audit`. This stub mode generates deterministic JSON results and random
 follow-up paths within the audited tree, writing outputs to the requested
 directory just like a real run.
+
+## Phase mode parallelism
+
+The phase-mode dispatcher executes two stages of work that can be tuned
+separately:
+
+- `--phase1-workers` sets the maximum number of processes for the phase-1
+  `ProcessPoolExecutor` (default: CPU count).
+- `--phase2-workers` sets the maximum number of threads for the phase-2
+  `ThreadPoolExecutor` and the OpenAI semaphore (default: 4).
+
+Example:
+
+```
+python -m phase_mode --orchestrator-template ORCH --findings-list LIST \
+    -o OUT --phase1-workers 8 --phase2-workers 2
+```
