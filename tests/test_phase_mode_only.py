@@ -240,5 +240,133 @@ class TestPhaseModeOnly(unittest.TestCase):
             )
 
 
+    def test_phase_mode_forced_final_conclusion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = os.path.join(tmp, "src.txt")
+            with open(src, "w", encoding="utf-8") as fh:
+                fh.write("source")
+
+            findings = {"vulnerabilities": [{"id": "v1", "file_path": src, "severity": "low"}]}
+            findings_path = os.path.join(tmp, "findings.json")
+            with open(findings_path, "w", encoding="utf-8") as fh:
+                json.dump(findings, fh)
+
+            listfile = os.path.join(tmp, "list.txt")
+            with open(listfile, "w", encoding="utf-8") as fh:
+                fh.write(findings_path + "\n")
+
+            orch = os.path.join(tmp, "orch.txt")
+            with open(orch, "w", encoding="utf-8") as fh:
+                fh.write("orch")
+
+            outdir = os.path.join(tmp, "out")
+            os.mkdir(outdir)
+
+            argv = [
+                "dispatch.py",
+                "--orchestrator-template",
+                orch,
+                "--findings-list",
+                listfile,
+                "-o",
+                outdir,
+                "--max-inquiries",
+                "1",
+            ]
+            with mock.patch.object(sys, "argv", argv):
+                args = dispatch.parse_args()
+
+            captured_cmds: list[list[str]] = []
+            prompts: list[str] = []
+
+            def fake_invoke(cmd, prompt, timeout, path):
+                captured_cmds.append(list(cmd))
+                out = cmd[cmd.index("--output-last-message") + 1]
+                with open(out, "w", encoding="utf-8") as fh:
+                    fh.write("resp")
+
+            orch_responses = [{"inquiry": "why"}, {"conclusion": "valid", "summary": "ok"}]
+
+            def fake_orchestrator(prompt, env=None):
+                prompts.append(prompt)
+                return orch_responses.pop(0)
+
+            with mock.patch("phase_mode.dispatcher.find_codex_bin", return_value="codex"), \
+                mock.patch("phase_mode.dispatcher._invoke_codex", side_effect=fake_invoke), \
+                mock.patch("phase_mode.dispatcher.call_orchestrator", side_effect=fake_orchestrator):
+                dispatcher.run_phase_mode(args)
+
+            verdicts_path = os.path.join(outdir, "final", "verdicts.json")
+            with open(verdicts_path, "r", encoding="utf-8") as vf:
+                verdicts = json.load(vf)
+            self.assertEqual(verdicts["v1"]["conclusion"], "valid")
+            self.assertEqual(verdicts["v1"]["depth"], 2)
+            self.assertEqual(len(prompts), 2)
+            self.assertEqual(len(captured_cmds), 1)
+
+
+    def test_phase_mode_forced_inconclusive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = os.path.join(tmp, "src.txt")
+            with open(src, "w", encoding="utf-8") as fh:
+                fh.write("source")
+
+            findings = {"vulnerabilities": [{"id": "v1", "file_path": src, "severity": "low"}]}
+            findings_path = os.path.join(tmp, "findings.json")
+            with open(findings_path, "w", encoding="utf-8") as fh:
+                json.dump(findings, fh)
+
+            listfile = os.path.join(tmp, "list.txt")
+            with open(listfile, "w", encoding="utf-8") as fh:
+                fh.write(findings_path + "\n")
+
+            orch = os.path.join(tmp, "orch.txt")
+            with open(orch, "w", encoding="utf-8") as fh:
+                fh.write("orch")
+
+            outdir = os.path.join(tmp, "out")
+            os.mkdir(outdir)
+
+            argv = [
+                "dispatch.py",
+                "--orchestrator-template",
+                orch,
+                "--findings-list",
+                listfile,
+                "-o",
+                outdir,
+                "--max-inquiries",
+                "1",
+            ]
+            with mock.patch.object(sys, "argv", argv):
+                args = dispatch.parse_args()
+
+            captured_cmds: list[list[str]] = []
+            prompts: list[str] = []
+
+            def fake_invoke(cmd, prompt, timeout, path):
+                captured_cmds.append(list(cmd))
+                out = cmd[cmd.index("--output-last-message") + 1]
+                with open(out, "w", encoding="utf-8") as fh:
+                    fh.write("resp")
+
+            orch_responses = [{"inquiry": "why"}, {}]
+
+            def fake_orchestrator(prompt, env=None):
+                prompts.append(prompt)
+                return orch_responses.pop(0)
+
+            with mock.patch("phase_mode.dispatcher.find_codex_bin", return_value="codex"), \
+                mock.patch("phase_mode.dispatcher._invoke_codex", side_effect=fake_invoke), \
+                mock.patch("phase_mode.dispatcher.call_orchestrator", side_effect=fake_orchestrator):
+                dispatcher.run_phase_mode(args)
+
+            verdicts_path = os.path.join(outdir, "final", "verdicts.json")
+            with open(verdicts_path, "r", encoding="utf-8") as vf:
+                verdicts = json.load(vf)
+            self.assertEqual(verdicts["v1"]["conclusion"], "inconclusive")
+            self.assertEqual(verdicts["v1"]["depth"], 2)
+            self.assertEqual(len(prompts), 2)
+            self.assertEqual(len(captured_cmds), 1)
 if __name__ == "__main__":
     unittest.main()
