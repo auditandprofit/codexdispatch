@@ -330,13 +330,19 @@ def process_finding(name: str, args, orchestrator_env: dict[str, str] | None, se
         if "conclusion" in result:
             depth = len(context) + 1
             final_path = os.path.join(final_dir, name)
-            _atomic_write_json(final_path, result)
+            final_out = {
+                "vulnerability": finding_obj,
+                "conclusion": result.get("conclusion"),
+                "summary": result.get("summary", ""),
+            }
+            _atomic_write_json(final_path, final_out)
             verdict = {
                 "file_path": file_path,
                 "conclusion": result.get("conclusion"),
                 "summary": result.get("summary", ""),
                 "severity": severity,
                 "depth": depth,
+                "vulnerability": finding_obj,
             }
             _atomic_write_json(cache_path, {"context": context, "status": "concluded"})
             return {vuln_id: verdict}
@@ -390,24 +396,35 @@ def process_finding(name: str, args, orchestrator_env: dict[str, str] | None, se
     depth = len(context) + 1
     final_path = os.path.join(final_dir, name)
     if "conclusion" in result:
-        _atomic_write_json(final_path, result)
+        final_out = {
+            "vulnerability": finding_obj,
+            "conclusion": result.get("conclusion"),
+            "summary": result.get("summary", ""),
+        }
+        _atomic_write_json(final_path, final_out)
         verdict = {
             "file_path": file_path,
             "conclusion": result.get("conclusion"),
             "summary": result.get("summary", ""),
             "severity": severity,
             "depth": depth,
+            "vulnerability": finding_obj,
         }
         _atomic_write_json(cache_path, {"context": context, "status": "concluded"})
         return {vuln_id: verdict}
 
-    _atomic_write_json(final_path, result)
+    final_out = {
+        "vulnerability": finding_obj,
+        **result,
+    }
+    _atomic_write_json(final_path, final_out)
     verdict = {
         "file_path": file_path,
         "conclusion": result.get("conclusion", "inconclusive"),
         "summary": result.get("summary", "").strip() or "Model returned no summary.",
         "severity": severity,
         "depth": depth,
+        "vulnerability": finding_obj,
     }
     _atomic_write_json(cache_path, {"context": context, "status": "concluded"})
     return {vuln_id: verdict}

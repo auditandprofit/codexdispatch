@@ -90,6 +90,14 @@ class TestPhaseModeOnly(unittest.TestCase):
                 verdicts = json.load(vf)
             self.assertEqual(verdicts["v1"]["conclusion"], "valid")
             self.assertEqual(verdicts["v2"]["conclusion"], "invalid")
+            self.assertEqual(verdicts["v1"]["vulnerability"]["id"], "v1")
+            self.assertEqual(verdicts["v2"]["vulnerability"]["id"], "v2")
+
+            final_v1 = os.path.join(outdir, "final", os.path.basename(v1_file))
+            with open(final_v1, "r", encoding="utf-8") as ff:
+                final_obj = json.load(ff)
+            self.assertEqual(final_obj["vulnerability"]["id"], "v1")
+            self.assertEqual(final_obj["conclusion"], "valid")
 
             phase2 = os.path.join(outdir, "phase_2", os.path.basename(v2_file))
             self.assertTrue(os.path.exists(phase2))
