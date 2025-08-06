@@ -81,4 +81,17 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="top-level directory to resolve vulnerability file paths",
     )
+    group_workers = parser.add_argument_group("parallelism")
+    group_workers.add_argument(
+        "--phase1-workers",
+        type=int,
+        default=os.cpu_count(),
+        help="max workers for phase-1 ProcessPool (default: CPU count)",
+    )
+    group_workers.add_argument(
+        "--phase2-workers",
+        type=int,
+        default=4,
+        help="max workers for phase-2 ThreadPool & OpenAI semaphore (default: 4)",
+    )
     return parser.parse_args()

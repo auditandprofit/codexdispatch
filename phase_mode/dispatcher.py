@@ -452,14 +452,16 @@ def run_phase_mode(args, orchestrator_env: dict[str, str] | None = None) -> None
             inputs = []
         inputs = sorted(dict.fromkeys(inputs))
 
-        with ProcessPoolExecutor(max_workers=os.cpu_count()) as pool:
+        with ProcessPoolExecutor(max_workers=args.phase1_workers) as pool:
             list(pool.map(process_file, inputs, repeat(args)))
 
     _split_phase1_findings(phase1_dir)
 
     finding_names = sorted(f for f in os.listdir(phase1_dir) if f.endswith(".json"))
-    openai_sem = threading.Semaphore(4)
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    has_sem_arg = "semaphore" in inspect.signature(call_orchestrator).parameters
+    phase2_workers = args.phase2_workers if has_sem_arg else 1
+    openai_sem = threading.Semaphore(phase2_workers)
+    with ThreadPoolExecutor(max_workers=phase2_workers) as pool:
         results = list(
             pool.map(
                 process_finding,
