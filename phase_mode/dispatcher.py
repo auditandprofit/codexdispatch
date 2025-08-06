@@ -376,8 +376,32 @@ def process_finding(name: str, args, orchestrator_env: dict[str, str] | None, se
         _atomic_write_json(out_path + ".meta", {"inquiry": inquiry, "response": response})
         context.append({"inquiry": inquiry, "response": response})
         _atomic_write_json(cache_path, {"context": context, "status": "open"})
+    # Exhausted inquiry budget; make one final attempt to conclude.
+    prior_ctx = json.dumps(context, indent=2)
+    final_prompt = (
+        f"{args.orchestrator_template_text}\n{finding_json}\n{source}\n{prior_ctx}\n"
+        "Based on the available information, provide a definitive conclusion"
+        " ('valid' or 'invalid') and a concise summary."
+    )
+    try:
+        result = call_orchestrator(final_prompt, env=orchestrator_env, semaphore=semaphore)
+    except TypeError:
+        result = call_orchestrator(final_prompt, env=orchestrator_env)
+    if "conclusion" in result:
+        depth = len(context) + 1
+        final_path = os.path.join(final_dir, name)
+        _atomic_write_json(final_path, result)
+        verdict = {
+            "file_path": file_path,
+            "conclusion": result.get("conclusion"),
+            "summary": result.get("summary", ""),
+            "severity": severity,
+            "depth": depth,
+        }
+        _atomic_write_json(cache_path, {"context": context, "status": "concluded"})
+        return {vuln_id: verdict}
 
-    depth = len(context)
+    depth = len(context) + 1
     final_path = os.path.join(final_dir, name)
     summary = "No conclusion: inquiry budget exhausted"
     _atomic_write_json(final_path, {"conclusion": "inconclusive", "summary": summary})
