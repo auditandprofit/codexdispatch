@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from unittest import mock
 
@@ -31,6 +30,9 @@ def test_batch_search_forces_web_search(tmp_path):
     for kwargs in captured:
         assert kwargs["tools"] == [{"type": "web_search"}]
         assert kwargs["tool_choice"] == {"type": "web_search"}
+        assert kwargs["model"] == "o3"
+        assert kwargs["service_tier"] == "flex"
+        assert kwargs["reasoning"] == {"effort": "high"}
     # Ensure outputs written
-    assert (output_dir / "a_response.json").is_file()
-    assert (output_dir / "b_response.json").is_file()
+    assert (output_dir / "a_response.txt").is_file()
+    assert (output_dir / "b_response.txt").is_file()

@@ -31,7 +31,9 @@ def test_run_on_directory_calls_openai_with_web_search(tmp_path):
 
     assert "file.txt" in result
     call = client.responses.calls[0]
-    assert call["model"] == "gpt-4o"
+    assert call["model"] == "o3"
+    assert call["service_tier"] == "flex"
+    assert call["reasoning"] == {"effort": "high"}
     assert call["tools"] == [{"type": "web_search"}]
     assert call["tool_choice"] == {"type": "web_search"}
 
@@ -51,7 +53,7 @@ def test_run_on_directory_writes_output(tmp_path):
         str(input_dir), "template", output_dir=str(output_dir), client=client
     )
 
-    out_file = output_dir / "a_response.json"
+    out_file = output_dir / "a_response.txt"
     assert out_file.is_file()
-    data = json.loads(out_file.read_text())
-    assert data == {"output": [{"content": []}]}
+    data = out_file.read_text()
+    assert data == ""

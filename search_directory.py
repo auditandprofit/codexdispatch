@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
-from typing import Any, Dict
+from typing import Dict
 
 from openai import OpenAI
 
@@ -15,18 +14,18 @@ def run_on_directory(
     template: str,
     output_dir: str | None = None,
     client: OpenAI | None = None,
-) -> Dict[str, Any]:
+) -> Dict[str, str]:
     """Send each file's contents to the OpenAI API with a system template.
 
     Args:
         input_dir: Directory containing text files to process.
         template: Template to prepend as a system message.
         output_dir: If provided, responses are written to this directory as
-            ``<filename>_response.json``.
+            ``<filename>_response.txt``.
         client: Optional OpenAI client. A new client is created if not provided.
 
     Returns:
-        Mapping of file name to raw response objects.
+        Mapping of file name to response text.
     """
     if client is None:
         client = OpenAI()
@@ -34,7 +33,7 @@ def run_on_directory(
     if output_dir is not None:
         os.makedirs(output_dir, exist_ok=True)
 
-    responses: Dict[str, Any] = {}
+    responses: Dict[str, str] = {}
     for name in sorted(os.listdir(input_dir)):
         path = os.path.join(input_dir, name)
         if not os.path.isfile(path):
@@ -46,26 +45,29 @@ def run_on_directory(
             {"role": "user", "content": content},
         ]
         response = client.responses.create(
-            model="gpt-4o",
+            model="o3",
             input=messages,
             tools=[{"type": "web_search"}],
             tool_choice={"type": "web_search"},
+            service_tier="flex",
+            reasoning={"effort": "high"},
         )
 
-        # The OpenAI client returns a pydantic model which isn't JSON serializable
-        # by default. Some test doubles may instead return plain dictionaries, so
-        # gracefully handle both cases.
-        if hasattr(response, "model_dump"):
-            serializable = response.model_dump()
-        else:
-            serializable = response
-        responses[name] = serializable
+        text = getattr(response, "output_text", "")
+        if not text:
+            for item in getattr(response, "output", []) or []:
+                if getattr(item, "type", None) == "message":
+                    for part in getattr(item, "content", []) or []:
+                        txt = getattr(part, "text", None)
+                        if txt:
+                            text += txt
+        responses[name] = text
 
         if output_dir is not None:
-            out_name = f"{os.path.splitext(name)[0]}_response.json"
+            out_name = f"{os.path.splitext(name)[0]}_response.txt"
             out_path = os.path.join(output_dir, out_name)
             with open(out_path, "w", encoding="utf-8") as out_f:
-                json.dump(serializable, out_f, indent=2)
+                out_f.write(text)
     return responses
 
 
@@ -78,7 +80,7 @@ def main() -> None:
     )
     parser.add_argument(
         "output_dir",
-        help="Directory to write response JSON files",
+        help="Directory to write response text files",
     )
     args = parser.parse_args()
 
