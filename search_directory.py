@@ -3,18 +3,26 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
-from typing import Dict, Any
+from typing import Any, Dict
 
 from openai import OpenAI
 
 
-def run_on_directory(input_dir: str, template: str, client: OpenAI | None = None) -> Dict[str, Any]:
+def run_on_directory(
+    input_dir: str,
+    template: str,
+    output_dir: str | None = None,
+    client: OpenAI | None = None,
+) -> Dict[str, Any]:
     """Send each file's contents to the OpenAI API with a system template.
 
     Args:
         input_dir: Directory containing text files to process.
         template: Template to prepend as a system message.
+        output_dir: If provided, responses are written to this directory as
+            ``<filename>_response.json``.
         client: Optional OpenAI client. A new client is created if not provided.
 
     Returns:
@@ -22,6 +30,9 @@ def run_on_directory(input_dir: str, template: str, client: OpenAI | None = None
     """
     if client is None:
         client = OpenAI()
+
+    if output_dir is not None:
+        os.makedirs(output_dir, exist_ok=True)
 
     responses: Dict[str, Any] = {}
     for name in sorted(os.listdir(input_dir)):
@@ -41,6 +52,12 @@ def run_on_directory(input_dir: str, template: str, client: OpenAI | None = None
             tool_choice={"type": "web_search"},
         )
         responses[name] = response
+
+        if output_dir is not None:
+            out_name = f"{os.path.splitext(name)[0]}_response.json"
+            out_path = os.path.join(output_dir, out_name)
+            with open(out_path, "w", encoding="utf-8") as out_f:
+                json.dump(response, out_f, indent=2)
     return responses
 
 
@@ -51,12 +68,16 @@ def main() -> None:
         "template_file",
         help="Path to file whose contents will be used as the system template",
     )
+    parser.add_argument(
+        "output_dir",
+        help="Directory to write response JSON files",
+    )
     args = parser.parse_args()
 
     with open(args.template_file, "r", encoding="utf-8") as tf:
         template = tf.read()
 
-    run_on_directory(args.input_dir, template)
+    run_on_directory(args.input_dir, template, output_dir=args.output_dir)
 
 
 if __name__ == "__main__":
