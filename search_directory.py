@@ -51,13 +51,21 @@ def run_on_directory(
             tools=[{"type": "web_search"}],
             tool_choice={"type": "web_search"},
         )
-        responses[name] = response
+
+        # The OpenAI client returns a pydantic model which isn't JSON serializable
+        # by default. Some test doubles may instead return plain dictionaries, so
+        # gracefully handle both cases.
+        if hasattr(response, "model_dump"):
+            serializable = response.model_dump()
+        else:
+            serializable = response
+        responses[name] = serializable
 
         if output_dir is not None:
             out_name = f"{os.path.splitext(name)[0]}_response.json"
             out_path = os.path.join(output_dir, out_name)
             with open(out_path, "w", encoding="utf-8") as out_f:
-                json.dump(response, out_f, indent=2)
+                json.dump(serializable, out_f, indent=2)
     return responses
 
 
