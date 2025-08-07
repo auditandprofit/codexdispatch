@@ -1,4 +1,4 @@
-import types
+import json
 
 import search_directory
 
@@ -9,7 +9,8 @@ class FakeResponses:
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
-        return types.SimpleNamespace(output=[types.SimpleNamespace(content=[])])
+        # Return something JSON serializable
+        return {"output": [{"content": []}]}
 
 
 class FakeClient:
@@ -24,7 +25,9 @@ def test_run_on_directory_calls_openai_with_web_search(tmp_path):
     template = "You are helpful"
 
     client = FakeClient()
-    result = search_directory.run_on_directory(str(tmp_path), template, client)
+    result = search_directory.run_on_directory(
+        str(tmp_path), template, client=client
+    )
 
     assert "file.txt" in result
     call = client.responses.calls[0]
@@ -35,3 +38,20 @@ def test_run_on_directory_calls_openai_with_web_search(tmp_path):
     messages = call["input"]
     assert messages[0] == {"role": "system", "content": template}
     assert messages[1] == {"role": "user", "content": "hello"}
+
+
+def test_run_on_directory_writes_output(tmp_path):
+    input_dir = tmp_path / "in"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    (input_dir / "a.txt").write_text("hi")
+
+    client = FakeClient()
+    search_directory.run_on_directory(
+        str(input_dir), "template", output_dir=str(output_dir), client=client
+    )
+
+    out_file = output_dir / "a_response.json"
+    assert out_file.is_file()
+    data = json.loads(out_file.read_text())
+    assert data == {"output": [{"content": []}]}
