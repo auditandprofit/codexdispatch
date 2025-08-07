@@ -77,6 +77,16 @@ def _atomic_write_json(path: str, data: dict) -> None:
     os.replace(tmp_name, target)
 
 
+def _trim_source_text(text: str) -> str:
+    """Trim large source files to first and last 200 lines."""
+    if len(text.encode("utf-8")) <= 100 * 1024:
+        return text
+    lines = text.splitlines()
+    head = lines[:200]
+    tail = lines[-200:] if len(lines) > 200 else []
+    return "\n".join(head + ["..."] + tail)
+
+
 def _split_phase1_findings(phase1_dir: str) -> None:
     """Split consolidated findings into one file per vulnerability."""
     to_delete: list[str] = []
@@ -318,6 +328,11 @@ def process_finding(name: str, args, orchestrator_env: dict[str, str] | None, se
         else:
             logging.warning("PhaseMode: unable to read %s", file_path)
 
+    file_source = {
+        "path": os.path.abspath(resolved_path),
+        "contents": _trim_source_text(source),
+    }
+
     finding_json = json.dumps(finding_obj, indent=2)
     concluded = False
     for idx in range(len(context), args.max_inquiries):
@@ -332,6 +347,7 @@ def process_finding(name: str, args, orchestrator_env: dict[str, str] | None, se
             final_path = os.path.join(final_dir, name)
             final_out = {
                 "vulnerability": finding_obj,
+                "file_source": file_source,
                 "conclusion": result.get("conclusion"),
                 "summary": result.get("summary", ""),
             }
@@ -398,6 +414,7 @@ def process_finding(name: str, args, orchestrator_env: dict[str, str] | None, se
     if "conclusion" in result:
         final_out = {
             "vulnerability": finding_obj,
+            "file_source": file_source,
             "conclusion": result.get("conclusion"),
             "summary": result.get("summary", ""),
         }
@@ -415,6 +432,7 @@ def process_finding(name: str, args, orchestrator_env: dict[str, str] | None, se
 
     final_out = {
         "vulnerability": finding_obj,
+        "file_source": file_source,
         **result,
     }
     _atomic_write_json(final_path, final_out)
